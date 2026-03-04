@@ -1,53 +1,74 @@
-# ==========================================
-# SynchroMesh: Global Configuration
-# CS 687 Capstone - Winter 2026
-# ==========================================
-
 project:
   name: "SynchroMesh Orchestrator"
   version: "1.0.0"
-  env: "development" # development, production, test
+  env: "development"
 
 # 1. LLM Configuration (Google ADK)
-# Defines the brain used by the specialized agents
 llm:
   provider: "google"
   model_name: "gemini-1.5-pro"
-  temperature: 0.2 # Lower temperature for higher precision in code refactoring
+  temperature: 0.2
   max_tokens: 4096
 
 # 2. Integration Layer (MCP)
-# Connection settings for the Model Context Protocol servers
 mcp:
   figma:
     server_url: "http://localhost:5001"
-    timeout: 30 # seconds
-    sync_interval: 3600 # 1 hour
+    timeout: 30
+    sync_interval: 3600
+
   github:
     server_url: "http://localhost:5002"
     default_branch: "main"
     pr_prefix: "synchromesh/ui-sync-"
+    repo_root: "./target_repo"
 
-# 3. Governance & Risk (Approval Gate)
-# Thresholds for the Staged Autonomy model
+# 3. Authentication
+auth:
+  figma_api_key_env: "FIGMA_API_KEY"
+  github_token_env: "GITHUB_TOKEN"
+
+# 4. Design Token Configuration
+design_tokens:
+  format: "var(--{token})"
+
+# 5. Governance & Risk Model
 governance:
+
   auto_apply_low_risk: true
-  high_risk_threshold: 0.85 # Minimum confidence required for autonomous action
-  max_files_per_sync: 10     # Flag for review if more than 10 files change
+
+  require_approval_for:
+    - MEDIUM
+    - HIGH
+
+  max_files_per_sync: 10
+
   restricted_directories:
     - "/src/core/auth"
     - "/public"
 
-# 4. Evaluation & Metrics
-# Targets for the Data Collection phase
+# 6. Evaluation & Metrics
 metrics:
   target_parity_score: 95.0
   export_format: "json"
   log_retention_days: 30
   trace_path: "evaluation/traces/"
 
-# 5. UI Settings (Streamlit)
+# 7. Output Artifacts
+outputs:
+  base_path: "outputs/"
+  drift_report: "drift_report.json"
+  recommendations: "recommendations.json"
+  metrics: "metrics.json"
+  patches_dir: "patches/"
+
+# 8. Logging
+logging:
+  level: "INFO"
+  file: "logs/synchromesh.log"
+
+# 9. UI Settings
 ui:
   theme: "dark"
   show_reasoning_traces: true
-  refresh_rate: 5 # seconds
+  refresh_rate: 5
