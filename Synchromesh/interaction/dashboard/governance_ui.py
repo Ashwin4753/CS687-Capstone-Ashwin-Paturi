@@ -1,28 +1,47 @@
+from typing import Optional
 import streamlit as st
 
 from interaction.approval_gate import ApprovalGate
 
-def render_approval_queue(context_store, settings: dict | None = None):
-    """
-    Governance UI:
-      - Uses ApprovalGate to bucket recommendations
-      - Allows selecting approvals (change_id)
-      - Stores approved IDs in st.session_state["approved_change_ids"]
-    """
-    st.subheader("🛡️ Governance Gate")
 
-    recs = context_store.shared_memory.get("recommendations", []) or []
-    if not recs:
-        st.write("No pending recommendations.")
+def _risk_badge(risk: str) -> str:
+    risk = str(risk).upper()
+    if risk == "LOW":
+        return "🟢 LOW"
+    if risk == "MEDIUM":
+        return "🟠 MEDIUM"
+    if risk == "HIGH":
+        return "🔴 HIGH"
+    return risk
+
+
+def render_approval_queue(context_store, settings: Optional[dict] = None):
+    """
+    Detailed governance review UI.
+
+    Purpose in the redesigned dashboard:
+    - summarize governance policy results
+    - provide detailed inspection of autonomous / approval-required / blocked items
+    - keep checkbox state synchronized with selected approvals
+    """
+    st.markdown("#### Governance Review")
+
+    memory = getattr(context_store, "shared_memory", {}) or {}
+    recommendations = memory.get("recommendations", []) or []
+
+    if not recommendations:
+        st.info("No governed recommendations available yet.")
         return
 
-    # Pull governance settings (optional)
     settings = settings or {}
-    gov = settings.get("governance", {}) if isinstance(settings, dict) else {}
-    auto_approve_low = bool(gov.get("auto_apply_low_risk", False))
-    require_approval_for = set([x.upper() for x in gov.get("require_approval_for", ["MEDIUM", "HIGH"])])
-    max_files = int(gov.get("max_files_per_sync", 10))
-    restricted_dirs = gov.get("restricted_directories", []) or []
+    governance = settings.get("governance", {}) if isinstance(settings, dict) else {}
+
+    auto_approve_low = bool(governance.get("auto_apply_low_risk", False))
+    require_approval_for = {
+        x.upper() for x in governance.get("require_approval_for", ["MEDIUM", "HIGH"])
+    }
+    max_files = int(governance.get("max_files_per_sync", 10))
+    restricted_dirs = governance.get("restricted_directories", []) or []
 
     gate = ApprovalGate(
         auto_approve_low_risk=auto_approve_low,
@@ -31,71 +50,137 @@ def render_approval_queue(context_store, settings: dict | None = None):
         restricted_directories=restricted_dirs,
     )
 
-    buckets = gate.process_recommendations(recs)
+    buckets = gate.process_recommendations(recommendations)
 
-    # Make sure we have a place to store approvals
     if "approved_change_ids" not in st.session_state:
         st.session_state["approved_change_ids"] = set()
 
-    # Summary
+    summary_col1, summary_col2, summary_col3 = st.columns(3)
+    summary_col1.metric("Autonomous", len(buckets["autonomous"]))
+    summary_col2.metric("Needs Approval", len(buckets["approval_required"]))
+    summary_col3.metric("Blocked", len(buckets["blocked"]))
+
     st.caption(
-        f"Autonomous: {len(buckets['autonomous'])} | "
-        f"Approval required: {len(buckets['approval_required'])} | "
-        f"Blocked: {len(buckets['blocked'])}"
+        f"Policy: auto_apply_low_risk={auto_approve_low} | "
+        f"approval_required={sorted(require_approval_for)} | "
+        f"max_files_per_sync={max_files}"
     )
 
-    # Autonomous bucket (LOW-risk, possibly auto-approved)
-    if buckets["autonomous"]:
-        with st.expander(f"✅ Autonomous (auto-approved) — {len(buckets['autonomous'])} change(s)", expanded=False):
-            for rec in buckets["autonomous"][:50]:
-                cid = rec.get("change_id")
-                st.write(f"- `{cid}` | {rec.get('file_path','')}:{rec.get('line','')} → {rec.get('proposed_token','')}")
-                # Ensure auto-approved items are included in approved ids (so rerun can apply)
-                st.session_state["approved_change_ids"].add(cid)
+    review_tabs = st.tabs(["Needs Approval", "Blocked", "Autonomous"])
 
-            st.caption("These are LOW-risk substitutions approved automatically by policy.")
+    # -------------------------
+    # Needs Approval
+    # -------------------------
+    with review_tabs[0]:
+        approval_required = buckets["approval_required"]
 
-    # Blocked bucket
-    if buckets["blocked"]:
-        with st.expander(f"⛔ Blocked — {len(buckets['blocked'])} change(s)", expanded=False):
-            for rec in buckets["blocked"][:50]:
-                title = f"{rec.get('file_path','')}:{rec.get('line','')} — {rec.get('original_value','')}"
-                st.write(f"**{title}**")
-                st.caption(rec.get("gate_reason", "Blocked by policy."))
+        if not approval_required:
+            st.success("No items currently require approval.")
+        else:
+            st.caption(f"{len(approval_required)} item(s) currently require review.")
 
-    # Approval required bucket
-    approval_required = buckets["approval_required"]
+            for index, rec in enumerate(approval_required[:50]):
+                change_id = rec.get("change_id")
+                title = (
+                    f"{_risk_badge(rec.get('risk_level', ''))} | "
+                    f"{rec.get('file_path', '')}:{rec.get('line', '')} | "
+                    f"{rec.get('proposed_token', '')}"
+                )
 
-    st.caption(f"Approval required: {len(approval_required)} item(s)")
+                with st.expander(title):
+                    if change_id:
+                        st.write(f"**Change ID:** `{change_id}`")
 
-    if not approval_required:
-        st.success("No items require approval. Pipeline can proceed.")
-        st.info(f"Selected approvals: {len(st.session_state['approved_change_ids'])}")
-        return
+                    st.write(f"**Original value:** `{rec.get('original_value', '')}`")
+                    st.write(f"**Suggested token:** `{rec.get('proposed_token', '')}`")
+                    st.write(f"**Suggested replacement:** `{rec.get('replacement_text', '')}`")
 
-    # Render approval required items with checkboxes
-    for i, rec in enumerate(approval_required):
-        cid = rec.get("change_id")
-        title = (
-            f"{rec.get('file_path','')}:{rec.get('line','')} — "
-            f"{rec.get('original_value','')} → {rec.get('proposed_token','')}"
-        )
+                    if rec.get("confidence_score") is not None:
+                        st.write(f"**Confidence score:** {rec.get('confidence_score')}")
 
-        with st.expander(title):
-            st.write(f"**Risk Level:** {rec.get('risk_level')}")
-            if rec.get("gate_reason"):
-                st.write(f"**Gate reason:** {rec.get('gate_reason')}")
-            if rec.get("risk_reason"):
-                st.write(f"**Risk reason:** {rec.get('risk_reason')}")
-            if rec.get("reasoning"):
-                st.write(f"**Reasoning:** {rec.get('reasoning')}")
-            if rec.get("snippet"):
-                st.code(rec["snippet"], language="tsx")
+                    if rec.get("gate_reason"):
+                        st.write(f"**Gate reason:** {rec.get('gate_reason')}")
 
-            checked = st.checkbox("Approve this change", key=f"approve_{cid}_{i}")
-            if checked:
-                st.session_state["approved_change_ids"].add(cid)
-            else:
-                st.session_state["approved_change_ids"].discard(cid)
+                    if rec.get("risk_reason"):
+                        st.write(f"**Risk reason:** {rec.get('risk_reason')}")
+
+                    if rec.get("reasoning"):
+                        st.write(f"**Reasoning:** {rec.get('reasoning')}")
+
+                    if rec.get("snippet"):
+                        st.code(rec["snippet"], language="tsx")
+
+                    default_checked = bool(change_id in st.session_state["approved_change_ids"]) or bool(
+                        rec.get("approved", False)
+                    )
+
+                    checked = st.checkbox(
+                        "Mark this change for approval",
+                        value=default_checked,
+                        key=f"gov_review_checkbox_{change_id}_{index}",
+                    )
+
+                    if change_id:
+                        if checked:
+                            st.session_state["approved_change_ids"].add(change_id)
+                        else:
+                            st.session_state["approved_change_ids"].discard(change_id)
+
+    # -------------------------
+    # Blocked
+    # -------------------------
+    with review_tabs[1]:
+        blocked = buckets["blocked"]
+
+        if not blocked:
+            st.info("No blocked items in this run.")
+        else:
+            st.warning(f"{len(blocked)} change(s) are blocked by governance policy.")
+
+            for rec in blocked[:50]:
+                title = (
+                    f"{rec.get('file_path', '')}:{rec.get('line', '')} — "
+                    f"{rec.get('original_value', '')}"
+                )
+                with st.expander(title):
+                    if rec.get("change_id"):
+                        st.write(f"**Change ID:** `{rec.get('change_id')}`")
+                    st.write(f"**Risk:** {_risk_badge(rec.get('risk_level', ''))}")
+                    st.write(f"**Gate reason:** {rec.get('gate_reason', 'Blocked by policy.')}")
+                    if rec.get("snippet"):
+                        st.code(rec["snippet"], language="tsx")
+
+    # -------------------------
+    # Autonomous
+    # -------------------------
+    with review_tabs[2]:
+        autonomous = buckets["autonomous"]
+
+        if not autonomous:
+            st.info("No autonomous items in this run.")
+        else:
+            st.success(f"{len(autonomous)} low-risk change(s) are auto-approved by policy.")
+
+            for rec in autonomous[:50]:
+                change_id = rec.get("change_id")
+                with st.expander(
+                    f"{rec.get('file_path', '')}:{rec.get('line', '')} → {rec.get('proposed_token', '')}"
+                ):
+                    if change_id:
+                        st.write(f"**Change ID:** `{change_id}`")
+                        st.session_state["approved_change_ids"].add(change_id)
+
+                    st.write(f"**Original value:** `{rec.get('original_value', '')}`")
+                    st.write(f"**Replacement:** `{rec.get('replacement_text', '')}`")
+                    st.write(f"**Risk:** {_risk_badge(rec.get('risk_level', ''))}")
+
+                    if rec.get("confidence_score") is not None:
+                        st.write(f"**Confidence score:** {rec.get('confidence_score')}")
+
+                    if rec.get("reasoning"):
+                        st.write(f"**Reasoning:** {rec.get('reasoning')}")
+
+                    if rec.get("snippet"):
+                        st.code(rec["snippet"], language="tsx")
 
     st.info(f"Selected approvals: {len(st.session_state['approved_change_ids'])}")

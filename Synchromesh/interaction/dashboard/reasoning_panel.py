@@ -1,91 +1,220 @@
 import streamlit as st
 
+
+def _risk_badge(risk: str) -> str:
+    risk = str(risk).upper()
+    if risk == "LOW":
+        return "🟢 LOW"
+    if risk == "MEDIUM":
+        return "🟠 MEDIUM"
+    if risk == "HIGH":
+        return "🔴 HIGH"
+    return risk
+
+
 def render_agent_logs(context_store):
-    st.subheader("🤖 Agent Reasoning & Audit")
+    """
+    Displays recommendation reasoning, structured trace logs,
+    and explainability/audit summaries in a compact tabbed layout.
+    """
+    st.markdown("#### Agent Reasoning & Audit")
 
-    mem = context_store.shared_memory
-    recs = mem.get("recommendations", []) or []
+    memory = getattr(context_store, "shared_memory", {}) or {}
+    recommendations = memory.get("recommendations", []) or []
+    trace_logs = memory.get("trace_logs", []) or []
+    evaluation = memory.get("evaluation", {}) or {}
+    reasoning_stats = evaluation.get("reasoning_stats", {}) or {}
 
-    # Run metadata (helps for report screenshots)
-    with st.expander("Run Metadata", expanded=False):
-        st.write(f"**Run ID:** `{mem.get('run_id', '')}`")
-        st.write(f"**Repo:** `{mem.get('repo', '')}`")
-        st.write(f"**Figma File ID:** `{mem.get('figma_file_id', '')}`")
-        st.write(f"**Session start:** `{mem.get('session_start', '')}`")
-
-    if not recs:
-        st.info("No reasoning yet. Run the pipeline to generate recommendations.")
+    if not recommendations and not trace_logs:
+        st.info("No reasoning or trace data available yet. Run the pipeline to generate audit evidence.")
         return
 
-    # Filters
-    col_a, col_b = st.columns([1, 2])
-    with col_a:
-        risk_filter = st.multiselect(
-            "Risk filter",
-            options=["LOW", "MEDIUM", "HIGH"],
-            default=["HIGH", "MEDIUM", "LOW"],
-        )
-    with col_b:
-        search = st.text_input("Search (file/token/value)", "")
+    # Top summary strip
+    top_cols = st.columns([1, 1, 1, 1])
+    top_cols[0].metric("Recommendations", len(recommendations))
+    top_cols[1].metric("Trace Logs", len(trace_logs))
+    top_cols[2].metric("Run ID", memory.get("run_id", "—"))
+    top_cols[3].metric("Repo", memory.get("repo", "—"))
 
-    risk_filter_set = {r.upper() for r in risk_filter}
-    search_l = search.strip().lower()
+    meta_tab, rec_tab, trace_tab = st.tabs(
+        ["Run Summary", "Recommendation Reasoning", "Structured Trace Logs"]
+    )
 
-    # Sort newest first (you can keep chronological if you prefer)
-    filtered = []
-    for rec in reversed(recs):
-        risk = str(rec.get("risk_level", "")).upper()
-        if risk and risk not in risk_filter_set:
-            continue
+    # -------------------------
+    # Run summary
+    # -------------------------
+    with meta_tab:
+        left, right = st.columns([1.2, 1])
 
-        if search_l:
-            hay = " ".join(
-                [
-                    str(rec.get("file_path", "")),
-                    str(rec.get("proposed_token", "")),
-                    str(rec.get("original_value", "")),
-                    str(rec.get("replacement_text", "")),
-                    str(rec.get("snippet", "")),
-                ]
-            ).lower()
-            if search_l not in hay:
-                continue
+        with left:
+            st.markdown("##### Run Metadata")
+            st.write(f"**Run ID:** `{memory.get('run_id', '')}`")
+            st.write(f"**Repo:** `{memory.get('repo', '')}`")
+            st.write(f"**Figma File ID:** `{memory.get('figma_file_id', '')}`")
+            st.write(f"**Session Start:** `{memory.get('session_start', '')}`")
+            if memory.get("run_start"):
+                st.write(f"**Run Start:** `{memory.get('run_start', '')}`")
+            if memory.get("report_path"):
+                st.write(f"**Report Path:** `{memory.get('report_path', '')}`")
 
-        filtered.append(rec)
-
-    st.caption(f"Showing {len(filtered)} of {len(recs)} recommendation(s)")
-
-    # Show latest 50 to keep UI fast
-    for rec in filtered[:50]:
-        file_path = rec.get("file_path", "")
-        line = rec.get("line", "")
-        risk = rec.get("risk_level", "?")
-        cid = rec.get("change_id", "")
-        approved = rec.get("approved", False)
-
-        header = f"{risk} | {file_path}:{line} | {'✅ approved' if approved else '⏳ pending'}"
-        with st.expander(header):
-            if cid:
-                st.write(f"**Change ID:** `{cid}`")
-
-            st.write(f"**Original:** `{rec.get('original_value','')}`")
-            st.write(f"**Proposed token:** `{rec.get('proposed_token','')}`")
-            st.write(f"**Replacement:** `{rec.get('replacement_text','')}`")
-
-            if rec.get("gate_reason"):
-                st.write(f"**Gate reason:** {rec.get('gate_reason')}")
-
-            if rec.get("risk_reason"):
-                st.write(f"**Risk reason:** {rec.get('risk_reason')}")
-
-            if rec.get("reasoning"):
-                st.write(f"**Agent reasoning (ADK):** {rec.get('reasoning')}")
-
-            if rec.get("snippet"):
-                st.code(rec["snippet"], language="tsx")
-
-            # Audit info (if present)
-            if rec.get("approved_by") or rec.get("approved_at"):
-                st.caption(
-                    f"Approved by `{rec.get('approved_by','')}` at `{rec.get('approved_at','')}`"
+        with right:
+            st.markdown("##### Explainability Summary")
+            if reasoning_stats:
+                st.write(f"**Trace entries total:** {reasoning_stats.get('entries_total', 0)}")
+                st.write(
+                    f"**Entries with confidence:** {reasoning_stats.get('entries_with_confidence', 0)}"
                 )
+                st.write(
+                    f"**Entries missing confidence:** {reasoning_stats.get('entries_missing_confidence', 0)}"
+                )
+
+                avg_conf = reasoning_stats.get("average_confidence_by_agent", {}) or {}
+                if avg_conf:
+                    st.markdown("**Average confidence by agent**")
+                    for agent, score in avg_conf.items():
+                        st.write(f"- **{agent}**: {score}")
+
+                action_counts = reasoning_stats.get("action_counts_by_agent", {}) or {}
+                if action_counts:
+                    st.markdown("**Action counts by agent**")
+                    for agent, count in action_counts.items():
+                        st.write(f"- **{agent}**: {count}")
+            else:
+                st.caption("No explainability summary available yet.")
+
+    # -------------------------
+    # Recommendation reasoning
+    # -------------------------
+    with rec_tab:
+        if not recommendations:
+            st.info("No governed recommendations available.")
+        else:
+            filter_col, search_col = st.columns([1, 2])
+
+            with filter_col:
+                risk_filter = st.multiselect(
+                    "Risk Filter",
+                    options=["LOW", "MEDIUM", "HIGH"],
+                    default=["HIGH", "MEDIUM", "LOW"],
+                    key="reasoning_risk_filter_ui",
+                )
+
+            with search_col:
+                search = st.text_input(
+                    "Search recommendations (file / token / value / reasoning)",
+                    "",
+                    key="reasoning_search_ui",
+                )
+
+            if not risk_filter:
+                risk_filter = ["LOW", "MEDIUM", "HIGH"]
+
+            risk_filter_set = {risk.upper() for risk in risk_filter}
+            search_l = search.strip().lower()
+
+            filtered = []
+            for rec in reversed(recommendations):
+                risk = str(rec.get("risk_level", "")).upper()
+                if risk and risk not in risk_filter_set:
+                    continue
+
+                if search_l:
+                    haystack = " ".join(
+                        [
+                            str(rec.get("file_path", "")),
+                            str(rec.get("proposed_token", "")),
+                            str(rec.get("original_value", "")),
+                            str(rec.get("replacement_text", "")),
+                            str(rec.get("snippet", "")),
+                            str(rec.get("reasoning", "")),
+                        ]
+                    ).lower()
+
+                    if search_l not in haystack:
+                        continue
+
+                filtered.append(rec)
+
+            st.caption(f"Showing {len(filtered)} of {len(recommendations)} recommendation(s)")
+
+            for rec in filtered[:50]:
+                file_path = rec.get("file_path", "")
+                line = rec.get("line", "")
+                risk = rec.get("risk_level", "?")
+                change_id = rec.get("change_id", "")
+                approved = bool(rec.get("approved", False))
+
+                header = (
+                    f"{_risk_badge(risk)} | "
+                    f"{file_path}:{line} | "
+                    f"{'✅ approved' if approved else '⏳ pending'}"
+                )
+
+                with st.expander(header):
+                    top_info_left, top_info_right = st.columns([1, 1])
+
+                    with top_info_left:
+                        if change_id:
+                            st.write(f"**Change ID:** `{change_id}`")
+                        st.write(f"**Original:** `{rec.get('original_value', '')}`")
+                        st.write(f"**Proposed Token:** `{rec.get('proposed_token', '')}`")
+                        st.write(f"**Replacement:** `{rec.get('replacement_text', '')}`")
+
+                    with top_info_right:
+                        if rec.get("token_found") is not None:
+                            st.write(f"**Token Found:** {rec.get('token_found')}")
+                        if rec.get("confidence_score") is not None:
+                            st.write(f"**Confidence Score:** {rec.get('confidence_score')}")
+                        if rec.get("gate_reason"):
+                            st.write(f"**Gate Reason:** {rec.get('gate_reason')}")
+                        if rec.get("risk_reason"):
+                            st.write(f"**Risk Reason:** {rec.get('risk_reason')}")
+
+                    if rec.get("reasoning"):
+                        st.markdown("**Agent Reasoning (ADK)**")
+                        st.write(rec.get("reasoning"))
+
+                    if rec.get("snippet"):
+                        st.markdown("**Code Snippet**")
+                        st.code(rec["snippet"], language="tsx")
+
+                    if rec.get("approved_by") or rec.get("approved_at"):
+                        st.caption(
+                            f"Approved by `{rec.get('approved_by', '')}` at `{rec.get('approved_at', '')}`"
+                        )
+
+    # -------------------------
+    # Structured trace logs
+    # -------------------------
+    with trace_tab:
+        if not trace_logs:
+            st.info("No structured trace logs available for this run.")
+        else:
+            st.caption(f"Showing {len(trace_logs)} trace log entrie(s)")
+
+            for entry in reversed(trace_logs[:100]):
+                agent_name = entry.get("agent_name", "unknown")
+                action = entry.get("action_taken", "")
+                timestamp = entry.get("timestamp", "")
+                confidence = entry.get("confidence_score", "")
+
+                header = f"{agent_name} | {action} | {timestamp}"
+
+                with st.expander(header):
+                    left, right = st.columns([1, 1])
+
+                    with left:
+                        st.write(f"**Agent:** {agent_name}")
+                        st.write(f"**Action:** {action}")
+                        if confidence != "":
+                            st.write(f"**Confidence:** {confidence}")
+
+                    with right:
+                        if entry.get("file_path"):
+                            st.write(f"**File:** `{entry.get('file_path')}`")
+                        if entry.get("line") not in (None, ""):
+                            st.write(f"**Line:** {entry.get('line')}")
+                        if entry.get("token"):
+                            st.write(f"**Token:** `{entry.get('token')}`")
+                        if timestamp:
+                            st.write(f"**Timestamp:** `{timestamp}`")

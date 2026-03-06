@@ -11,28 +11,20 @@ llm:
   max_tokens: 4096
 
 # 2. Integration Layer (MCP)
+# Servers are launched via stdio MCP clients in code
 mcp:
   figma:
-    server_url: "http://localhost:5001"
-    timeout: 30
     sync_interval: 3600
-
   github:
-    server_url: "http://localhost:5002"
     default_branch: "main"
     pr_prefix: "synchromesh/ui-sync-"
     repo_root: "./target_repo"
 
-# 3. Authentication
-auth:
-  figma_api_key_env: "FIGMA_API_KEY"
-  github_token_env: "GITHUB_TOKEN"
-
-# 4. Design Token Configuration
+# 3. Design Token Configuration
 design_tokens:
   format: "var(--{token})"
 
-# 5. Governance & Risk Model
+# 4. Governance & Risk Model
 governance:
 
   auto_apply_low_risk: true
@@ -47,27 +39,23 @@ governance:
     - "/src/core/auth"
     - "/public"
 
-# 6. Evaluation & Metrics
+# 5. Evaluation & Metrics
 metrics:
   target_parity_score: 95.0
   export_format: "json"
   log_retention_days: 30
   trace_path: "evaluation/traces/"
 
-# 7. Output Artifacts
+# 6. Output Artifacts
 outputs:
   base_path: "outputs/"
-  drift_report: "drift_report.json"
-  recommendations: "recommendations.json"
-  metrics: "metrics.json"
-  patches_dir: "patches/"
 
-# 8. Logging
+# 7. Logging (optional future integration)
 logging:
   level: "INFO"
   file: "logs/synchromesh.log"
 
-# 9. UI Settings
+# 8. UI Settings
 ui:
   theme: "dark"
   show_reasoning_traces: true

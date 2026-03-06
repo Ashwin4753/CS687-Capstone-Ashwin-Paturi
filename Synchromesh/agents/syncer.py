@@ -10,6 +10,7 @@ except Exception as e:
         "Install/enable Google ADK in this environment before running SynchroMesh."
     ) from e
 
+
 @dataclass
 class PatchResult:
     file_path: str
@@ -19,27 +20,33 @@ class PatchResult:
     skipped_count: int
     notes: List[str]
 
+
 class SyncerAgent:
     """
     Syncer Agent
-    - Applies APPROVED LOW-risk token substitutions
-    - Generates unified diff patch output (capstone-friendly + auditable)
-    - Drafts PR payload through GitHub MCP (or returns PR draft if MCP write not available)
-    - Uses ADK for PR body + explainability (ADK is core)
+
+    Responsibilities:
+    - Apply APPROVED LOW-risk token substitutions
+    - Generate unified diffs for auditability
+    - Produce PR draft content via ADK
+    - Respect bounded autonomy (never auto-apply MEDIUM/HIGH)
+
+    Notes:
+    - File writes are best-effort and depend on GitHub MCP write support.
+    - If write support is unavailable, diffs are still produced for review.
     """
 
     def __init__(self) -> None:
         self.agent = Agent(
             name="Syncer",
             instructions=(
-                "You are a DevOps and Refactoring specialist.\n"
-                "Apply approved LOW-risk token swaps safely.\n"
-                "Generate auditable diffs and clear PR messages.\n"
-                "Never apply HIGH-risk changes automatically.\n"
+                "You are a DevOps and refactoring specialist.\n"
+                "Apply approved LOW-risk token substitutions safely.\n"
+                "Generate auditable diffs and concise pull request summaries.\n"
+                "Never apply MEDIUM or HIGH-risk changes automatically.\n"
             ),
         )
 
-    # ---------- ADK call helper ----------
     def _adk_call(self, prompt: str, context: Optional[Dict[str, Any]] = None) -> str:
         payload = {"prompt": prompt, "context": context or {}}
 
@@ -66,17 +73,16 @@ class SyncerAgent:
         if isinstance(result, str):
             return result
         if isinstance(result, dict):
-            for k in ("output", "text", "message", "content"):
-                if k in result and isinstance(result[k], str):
-                    return result[k]
+            for key in ("output", "text", "message", "content"):
+                if key in result and isinstance(result[key], str):
+                    return result[key]
             return str(result)
         for attr in ("output", "text", "message", "content"):
-            val = getattr(result, attr, None)
-            if isinstance(val, str):
-                return val
+            value = getattr(result, attr, None)
+            if isinstance(value, str):
+                return value
         return str(result)
 
-    # ---------- public API ----------
     async def apply_token_swaps(
         self,
         recommendations: List[Dict[str, Any]],
@@ -85,18 +91,24 @@ class SyncerAgent:
         approved_key: str = "approved",
     ) -> Dict[str, Any]:
         """
-        Applies LOW-risk recommendations and returns:
-          - patches (diffs)
-          - PR draft payload
-          - summary stats
+        Applies approved LOW-risk recommendations.
 
-        recommendations should include:
-          - file_path, span_start, span_end, replacement_text, risk_level
-        If require_approved=True, only recommendations with rec[approved_key]==True are applied.
+        Returns:
+        - summary
+        - patches
+        - skipped
+        - pull_request (draft payload)
+
+        Expected recommendation fields:
+        - file_path
+        - span_start
+        - span_end
+        - replacement_text
+        - risk_level
+        - original_value
         """
-        # Filter bounded autonomy:
-        low = []
-        skipped = []
+        eligible: List[Dict[str, Any]] = []
+        skipped: List[Tuple[Dict[str, Any], str]] = []
 
         for rec in recommendations:
             risk = str(rec.get("risk_level", "")).upper()
@@ -108,37 +120,46 @@ class SyncerAgent:
                 skipped.append((rec, "Skipped: not approved"))
                 continue
 
-            # Must have file_path and either spans or a safe pattern:
             if not rec.get("file_path"):
                 skipped.append((rec, "Skipped: missing file_path"))
                 continue
+
             if rec.get("span_start") is None or rec.get("span_end") is None:
-                skipped.append((rec, "Skipped: missing span_start/span_end (span-safe patching required)"))
-                continue
-            if not rec.get("replacement_text"):
-                skipped.append((rec, "Skipped: missing replacement_text"))
+                skipped.append((rec, "Skipped: missing span_start/span_end"))
                 continue
 
-            low.append(rec)
+            replacement_text = str(rec.get("replacement_text", "")).strip()
+            if not replacement_text or replacement_text == "N/A":
+                skipped.append((rec, "Skipped: invalid replacement_text"))
+                continue
 
-        # Group by file_path
+            eligible.append(rec)
+
         by_file: Dict[str, List[Dict[str, Any]]] = {}
-        for rec in low:
-            by_file.setdefault(rec["file_path"], []).append(rec)
+        for rec in eligible:
+            by_file.setdefault(str(rec["file_path"]), []).append(rec)
 
         patch_results: List[PatchResult] = []
+        applied_recommendations: List[Dict[str, Any]] = []
         total_applied = 0
         total_skipped = len(skipped)
 
         for file_path, file_recs in by_file.items():
-            original = await self._safe_read_file(github_mcp, file_path)
-            updated, applied_count, notes = self._apply_span_replacements(original, file_recs)
-            diff = self._make_diff(file_path, original, updated)
+            original_content = await self._safe_read_file(github_mcp, file_path)
 
-            changed = (original != updated)
+            (
+                updated_content,
+                applied_count,
+                file_notes,
+                applied_recs,
+                skipped_in_file,
+            ) = self._apply_span_replacements(original_content, file_recs)
+
+            diff = self._make_diff(file_path, original_content, updated_content)
+            changed = original_content != updated_content
+
             if changed:
-                # Attempt write via MCP if available; otherwise just return diff
-                await self._safe_write_file_if_available(github_mcp, file_path, updated)
+                await self._safe_write_file_if_available(github_mcp, file_path, updated_content)
 
             patch_results.append(
                 PatchResult(
@@ -146,30 +167,33 @@ class SyncerAgent:
                     changed=changed,
                     diff=diff,
                     applied_count=applied_count,
-                    skipped_count=0,
-                    notes=notes,
+                    skipped_count=skipped_in_file,
+                    notes=file_notes,
                 )
             )
+
             total_applied += applied_count
+            applied_recommendations.extend(applied_recs)
+            total_skipped += skipped_in_file
 
         pr_title = f"SynchroMesh: Token sync ({total_applied} substitutions)"
         pr_body = self._adk_call(
-            "Write a GitHub Pull Request description for an automated design-token synchronization.\n"
-            "Include: summary, safety/governance note, list of changes (by file), and review instructions.\n"
-            "Keep it professional and concise.",
+            "Write a concise GitHub Pull Request description for an automated design-token synchronization.\n"
+            "Include a summary, governance/safety note, changed files, and reviewer guidance.",
             context={
                 "applied_count": total_applied,
                 "skipped_count": total_skipped,
-                "files_changed": [p.file_path for p in patch_results if p.changed],
+                "files_changed": [patch.file_path for patch in patch_results if patch.changed],
                 "sample_changes": [
                     {
-                        "file": r.get("file_path"),
-                        "line": r.get("line"),
-                        "old": r.get("original_value"),
-                        "new": r.get("replacement_text"),
-                        "token": r.get("proposed_token"),
+                        "file": rec.get("file_path"),
+                        "line": rec.get("line"),
+                        "old": rec.get("original_value"),
+                        "new": rec.get("replacement_text"),
+                        "token": rec.get("proposed_token"),
+                        "change_id": rec.get("change_id"),
                     }
-                    for r in low[:12]
+                    for rec in applied_recommendations[:12]
                 ],
             },
         )
@@ -178,97 +202,132 @@ class SyncerAgent:
             "action": "CREATE_PR_DRAFT",
             "title": pr_title,
             "body": pr_body,
-            "changes": [{"file_path": p.file_path, "diff": p.diff} for p in patch_results if p.changed],
+            "changes": [
+                {"file_path": patch.file_path, "diff": patch.diff}
+                for patch in patch_results
+                if patch.changed
+            ],
         }
 
         return {
             "summary": {
                 "applied": total_applied,
                 "skipped": total_skipped,
-                "files_touched": len(by_file),
+                "files_touched": len([patch for patch in patch_results if patch.changed]),
             },
-            "patches": [asdict(p) for p in patch_results],
+            "patches": [asdict(patch) for patch in patch_results],
             "skipped": [{"rec": rec, "reason": reason} for rec, reason in skipped],
+            "applied_recommendations": applied_recommendations,
             "pull_request": pr_payload,
         }
 
-    # ---------- patching ----------
-    def _apply_span_replacements(self, content: str, recs: List[Dict[str, Any]]) -> Tuple[str, int, List[str]]:
+    def _apply_span_replacements(
+        self,
+        content: str,
+        recs: List[Dict[str, Any]],
+    ) -> Tuple[str, int, List[str], List[Dict[str, Any]], int]:
         """
         Applies replacements using spans (start/end indices).
-        Important: Apply from end->start so indices remain valid.
+
+        Important:
+        - Replacements are applied from end -> start
+        - Overlapping spans are skipped
         """
         notes: List[str] = []
         applied = 0
+        skipped_in_file = 0
+        applied_recommendations: List[Dict[str, Any]] = []
 
-        # Sort by span_start descending
         safe_recs = sorted(
             recs,
-            key=lambda r: int(r.get("span_start", 0)),
+            key=lambda rec: int(rec.get("span_start", 0)),
             reverse=True,
         )
 
+        used_spans: List[Tuple[int, int]] = []
         updated = content
-        for r in safe_recs:
-            s = int(r["span_start"])
-            e = int(r["span_end"])
-            repl = str(r["replacement_text"])
 
-            if s < 0 or e > len(updated) or s >= e:
-                notes.append(f"Invalid span for {r.get('file_path')} at line {r.get('line')}: {s}-{e}")
+        for rec in safe_recs:
+            start = int(rec["span_start"])
+            end = int(rec["span_end"])
+            replacement = str(rec["replacement_text"])
+
+            if start < 0 or end > len(updated) or start >= end:
+                notes.append(
+                    f"Invalid span for {rec.get('file_path')} at line {rec.get('line')}: {start}-{end}"
+                )
+                skipped_in_file += 1
                 continue
 
-            original_slice = updated[s:e]
-            # Safety: ensure we are replacing what we think
-            expected_value = str(r.get("original_value", "")).strip()
-            if expected_value and expected_value not in original_slice:
-                # still allow (could be normalized) but flag it
+            overlaps = any(
+                not (end <= used_start or start >= used_end)
+                for used_start, used_end in used_spans
+            )
+            if overlaps:
                 notes.append(
-                    f"Span mismatch warning at line {r.get('line')}: expected '{expected_value}' "
+                    f"Skipped overlapping replacement at {rec.get('file_path')}:{rec.get('line')} ({start}-{end})"
+                )
+                skipped_in_file += 1
+                continue
+
+            original_slice = updated[start:end]
+            expected_value = str(rec.get("original_value", "")).strip()
+
+            if expected_value and expected_value not in original_slice:
+                notes.append(
+                    f"Span mismatch warning at line {rec.get('line')}: expected '{expected_value}' "
                     f"not found exactly in slice '{original_slice}'. Applied anyway."
                 )
 
-            updated = updated[:s] + repl + updated[e:]
+            updated = updated[:start] + replacement + updated[end:]
+            used_spans.append((start, end))
             applied += 1
+            applied_recommendations.append(rec)
 
-        return updated, applied, notes
+        return updated, applied, notes, applied_recommendations, skipped_in_file
 
     @staticmethod
     def _make_diff(file_path: str, original: str, updated: str) -> str:
         if original == updated:
             return ""
-        o_lines = original.splitlines(keepends=True)
-        u_lines = updated.splitlines(keepends=True)
+
+        original_lines = original.splitlines(keepends=True)
+        updated_lines = updated.splitlines(keepends=True)
+
         diff = difflib.unified_diff(
-            o_lines,
-            u_lines,
+            original_lines,
+            updated_lines,
             fromfile=f"a/{file_path}",
             tofile=f"b/{file_path}",
         )
         return "".join(diff)
 
-    # ---------- MCP I/O ----------
     async def _safe_read_file(self, github: Any, path: str) -> str:
         fn = getattr(github, "read_file", None)
         if callable(fn):
             return await fn(path)  # type: ignore[misc]
+
         fn = getattr(github, "get_file_content", None)
         if callable(fn):
             return await fn(path)  # type: ignore[misc]
-        raise AttributeError("GitHub MCP client must expose read_file(...) or get_file_content(...).")
+
+        raise AttributeError(
+            "GitHub MCP client must expose read_file(...) or get_file_content(...)."
+        )
 
     async def _safe_write_file_if_available(self, github: Any, path: str, content: str) -> None:
         """
-        If your GitHub MCP server supports writing, this will persist changes.
-        If not available, it's still OK for capstone: diffs are returned for audit.
+        Best-effort write support.
+        If unavailable, diffs are still returned for governance review.
         """
         fn = getattr(github, "write_file", None)
         if callable(fn):
             await fn(path, content)  # type: ignore[misc]
             return
+
         fn = getattr(github, "update_file", None)
         if callable(fn):
             await fn(path, content)  # type: ignore[misc]
             return
-        # no write capability — silently skip (diff still returned)
+
         return

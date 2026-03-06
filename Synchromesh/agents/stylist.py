@@ -1,3 +1,4 @@
+import hashlib
 from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -9,11 +10,12 @@ except Exception as e:
         "Install/enable Google ADK in this environment before running SynchroMesh."
     ) from e
 
+
 @dataclass
 class Recommendation:
     file_path: str
     line: int
-    kind: str  # COLOR | SIZE | INLINE_STYLE
+    kind: str  # COLOR | SIZE | INLINE_STYLE | UNKNOWN
     original_value: str
     proposed_token: str
     replacement_text: str
@@ -24,28 +26,36 @@ class Recommendation:
     span_end: Optional[int] = None
     snippet: str = ""
 
+
 class StylistAgent:
     """
     Stylist Agent
-    - Compares ghost styles against authoritative tokens
-    - Produces recommendations with bounded autonomy risk tiers
-    - Uses ADK for explainable reasoning output (ADK is core)
+
+    Responsibilities:
+    - Compare ghost styles against authoritative design tokens
+    - Produce structured recommendations for governed synchronization
+    - Assign bounded-autonomy risk tiers
+    - Use Google ADK for concise, explainable reasoning
+
+    Notes:
+    - Approximate matching is currently implemented for colors only.
+    - Exact value matches are treated as LOW risk.
     """
 
     def __init__(self) -> None:
         self.agent = Agent(
             name="Stylist",
             instructions=(
-                "You are a Design System Expert.\n"
-                "Given detected ghost styles and Figma design tokens, match values to tokens.\n"
-                "Output structured recommendations. Use bounded autonomy:\n"
-                "LOW = safe token swap (exact match), MEDIUM = close match (needs approval),\n"
-                "HIGH = unknown/inline/structural.\n"
+                "You are a design system expert.\n"
+                "Given detected ghost styles and Figma design tokens, map values to the best matching token.\n"
+                "Return structured recommendations using bounded autonomy:\n"
+                "LOW = safe exact token swap,\n"
+                "MEDIUM = approximate but plausible match requiring approval,\n"
+                "HIGH = unknown, inline, or structurally risky change.\n"
                 "Provide concise reasoning suitable for a governance dashboard.\n"
             ),
         )
 
-    # ---------- ADK call helper ----------
     def _adk_call(self, prompt: str, context: Optional[Dict[str, Any]] = None) -> str:
         payload = {"prompt": prompt, "context": context or {}}
 
@@ -72,17 +82,26 @@ class StylistAgent:
         if isinstance(result, str):
             return result
         if isinstance(result, dict):
-            for k in ("output", "text", "message", "content"):
-                if k in result and isinstance(result[k], str):
-                    return result[k]
+            for key in ("output", "text", "message", "content"):
+                if key in result and isinstance(result[key], str):
+                    return result[key]
             return str(result)
         for attr in ("output", "text", "message", "content"):
-            val = getattr(result, attr, None)
-            if isinstance(val, str):
-                return val
+            value = getattr(result, attr, None)
+            if isinstance(value, str):
+                return value
         return str(result)
 
-    # ---------- public API ----------
+    @staticmethod
+    def _make_change_id(rec: Dict[str, Any]) -> str:
+        key = (
+            f"{rec.get('file_path', '')}|"
+            f"{rec.get('line', '')}|"
+            f"{rec.get('original_value', '')}|"
+            f"{rec.get('replacement_text', '')}"
+        )
+        return hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
+
     def detect_drift(
         self,
         ghost_styles: List[Dict[str, Any]],
@@ -90,71 +109,51 @@ class StylistAgent:
         token_format: str = "var(--{token})",
     ) -> List[Dict[str, Any]]:
         """
-        ghost_styles: output of ArchaeologistAgent.find_ghost_styles()
-        figma_tokens: dict of tokens, ideally {token_name: token_value}
-        token_format: how replacements are rendered, e.g. "var(--{token})" or "{token}"
+        Converts Archaeologist findings into governed recommendations.
+
+        Inputs:
+        - ghost_styles: output of ArchaeologistAgent.find_ghost_styles()
+        - figma_tokens: token map, ideally {token_name: token_value}
+        - token_format: how tokens should be rendered in replacement text
+
+        Returns:
+        - List[Dict[str, Any]] ready for ApprovalGate, Syncer, UI, and evaluation
         """
         value_to_token = self._build_value_to_token_map(figma_tokens)
         token_to_value = self._build_token_to_value_map(figma_tokens)
 
-        recs: List[Recommendation] = []
-        for gs in ghost_styles:
-            file_path = gs.get("file_path", "")
-            line = int(gs.get("line", 0))
-            kind_raw = gs.get("kind", gs.get("type", ""))
-            original = str(gs.get("value", "")).strip()
-            snippet = str(gs.get("snippet", ""))
+        recommendations: List[Recommendation] = []
 
-            span_start = gs.get("span_start")
-            span_end = gs.get("span_end")
+        for finding in ghost_styles:
+            file_path = str(finding.get("file_path", ""))
+            line = int(finding.get("line", 0))
+            kind_raw = finding.get("kind", finding.get("type", ""))
+            original_value = str(finding.get("value", "")).strip()
+            snippet = str(finding.get("snippet", ""))
+
+            span_start = finding.get("span_start")
+            span_end = finding.get("span_end")
 
             kind = self._normalize_kind(kind_raw)
 
-            # Inline styles are HIGH by policy (recommendation-only)
+            # HIGH: inline style blocks
             if kind == "INLINE_STYLE":
-                recs.append(
+                recommendations.append(
                     Recommendation(
                         file_path=file_path,
                         line=line,
                         kind=kind,
-                        original_value=original,
+                        original_value=original_value,
                         proposed_token="N/A",
                         replacement_text="N/A",
                         risk_level="HIGH",
-                        risk_reason="Inline style block likely needs structural refactor / manual review.",
+                        risk_reason="Inline style block likely requires structural refactor or manual review.",
                         reasoning=self._adk_call(
-                            "Write a 1-2 sentence governance explanation for why inline styles are high-risk.",
-                            context={"file_path": file_path, "line": line, "snippet": snippet[:160]},
-                        ),
-                        span_start=span_start,
-                        span_end=span_end,
-                        snippet=snippet,
-                    )
-                )
-                continue
-
-            # 1) Try exact match (LOW)
-            normalized = self._normalize_value(original, kind)
-            exact_token = value_to_token.get(normalized)
-
-            if exact_token:
-                recs.append(
-                    Recommendation(
-                        file_path=file_path,
-                        line=line,
-                        kind=kind,
-                        original_value=original,
-                        proposed_token=exact_token,
-                        replacement_text=token_format.format(token=exact_token),
-                        risk_level="LOW",
-                        risk_reason="Exact token value match (safe token substitution).",
-                        reasoning=self._adk_call(
-                            "Produce a concise reasoning sentence for a LOW-risk token substitution.",
+                            "Write a concise governance explanation for why this inline style should be treated as HIGH risk.",
                             context={
-                                "original_value": original,
-                                "normalized_value": normalized,
-                                "matched_token": exact_token,
-                                "replacement_text": token_format.format(token=exact_token),
+                                "file_path": file_path,
+                                "line": line,
+                                "snippet": snippet[:160],
                             },
                         ),
                         span_start=span_start,
@@ -164,34 +163,100 @@ class StylistAgent:
                 )
                 continue
 
-            # 2) Try approximate match for colors (MEDIUM)
-            approx_token, approx_score = None, None
+            # HIGH: unknown finding types
+            if kind == "UNKNOWN":
+                recommendations.append(
+                    Recommendation(
+                        file_path=file_path,
+                        line=line,
+                        kind=kind,
+                        original_value=original_value,
+                        proposed_token="UNKNOWN_TOKEN",
+                        replacement_text="N/A",
+                        risk_level="HIGH",
+                        risk_reason="Unsupported or unknown finding type; requires manual review.",
+                        reasoning=self._adk_call(
+                            "Write a concise explanation for why this unsupported finding should be treated as HIGH risk.",
+                            context={
+                                "file_path": file_path,
+                                "line": line,
+                                "original_value": original_value,
+                                "snippet": snippet[:160],
+                            },
+                        ),
+                        span_start=span_start,
+                        span_end=span_end,
+                        snippet=snippet,
+                    )
+                )
+                continue
+
+            normalized = self._normalize_value(original_value, kind)
+
+            # LOW: exact token match
+            exact_token = value_to_token.get(normalized)
+            if exact_token:
+                replacement_text = token_format.format(token=exact_token)
+                recommendations.append(
+                    Recommendation(
+                        file_path=file_path,
+                        line=line,
+                        kind=kind,
+                        original_value=original_value,
+                        proposed_token=exact_token,
+                        replacement_text=replacement_text,
+                        risk_level="LOW",
+                        risk_reason="Exact token value match (safe token substitution).",
+                        reasoning=self._adk_call(
+                            "Produce a concise reasoning sentence for a LOW-risk exact token substitution.",
+                            context={
+                                "file_path": file_path,
+                                "line": line,
+                                "original_value": original_value,
+                                "normalized_value": normalized,
+                                "matched_token": exact_token,
+                                "replacement_text": replacement_text,
+                            },
+                        ),
+                        span_start=span_start,
+                        span_end=span_end,
+                        snippet=snippet,
+                    )
+                )
+                continue
+
+            # MEDIUM: approximate color match only
+            approx_token: Optional[str] = None
+            approx_score: Optional[float] = None
+
             if kind == "COLOR":
                 approx_token, approx_score = self._approximate_color_match(
                     normalized_value=normalized,
                     token_to_value=token_to_value,
                 )
 
-            if approx_token and approx_score is not None and approx_score >= 0.92:
-                recs.append(
+            if approx_token is not None and approx_score is not None and approx_score >= 0.92:
+                replacement_text = token_format.format(token=approx_token)
+                recommendations.append(
                     Recommendation(
                         file_path=file_path,
                         line=line,
                         kind=kind,
-                        original_value=original,
+                        original_value=original_value,
                         proposed_token=approx_token,
-                        replacement_text=token_format.format(token=approx_token),
+                        replacement_text=replacement_text,
                         risk_level="MEDIUM",
-                        risk_reason=f"Close color match (similarity={approx_score:.2f}); requires approval.",
+                        risk_reason=f"Close color match detected (similarity={approx_score:.2f}); approval required.",
                         reasoning=self._adk_call(
-                            "Write a short governance explanation for a MEDIUM-risk recommendation "
-                            "due to approximate token match.",
+                            "Write a short governance explanation for a MEDIUM-risk recommendation caused by approximate color matching.",
                             context={
-                                "original_value": original,
+                                "file_path": file_path,
+                                "line": line,
+                                "original_value": original_value,
                                 "normalized_value": normalized,
                                 "approx_token": approx_token,
                                 "similarity": approx_score,
-                                "replacement_text": token_format.format(token=approx_token),
+                                "replacement_text": replacement_text,
                             },
                         ),
                         span_start=span_start,
@@ -201,24 +266,24 @@ class StylistAgent:
                 )
                 continue
 
-            # 3) Unknown token (HIGH)
-            recs.append(
+            # HIGH: unknown / unmatched token
+            recommendations.append(
                 Recommendation(
                     file_path=file_path,
                     line=line,
                     kind=kind,
-                    original_value=original,
+                    original_value=original_value,
                     proposed_token="UNKNOWN_TOKEN",
                     replacement_text="N/A",
                     risk_level="HIGH",
-                    risk_reason="No matching token found; potential design drift or missing token definition.",
+                    risk_reason="No matching design token found; possible drift or missing token definition.",
                     reasoning=self._adk_call(
-                        "Write a short governance explanation for a HIGH-risk drift finding with no token match.",
+                        "Write a short governance explanation for a HIGH-risk unmatched drift finding.",
                         context={
-                            "original_value": original,
-                            "normalized_value": normalized,
                             "file_path": file_path,
                             "line": line,
+                            "original_value": original_value,
+                            "normalized_value": normalized,
                             "snippet": snippet[:160],
                         },
                     ),
@@ -228,93 +293,119 @@ class StylistAgent:
                 )
             )
 
-        return [asdict(r) for r in recs]
+        out = [asdict(rec) for rec in recommendations]
+        
+        for rec in out:
+           
+            # Deterministic ID used by governance + UI
+            rec["change_id"] = self._make_change_id(rec)
 
-    # ---------- internals ----------
+            # Whether token was successfully mapped
+            rec["token_found"] = rec.get("proposed_token") not in {"UNKNOWN_TOKEN", "N/A"}
+
+            # --- Explainability confidence score ---
+            risk = rec.get("risk_level", "HIGH")
+
+            if risk == "LOW":
+                rec["confidence_score"] = 0.95
+            elif risk == "MEDIUM":
+                rec["confidence_score"] = 0.75
+            else:
+                rec["confidence_score"] = 0.55
+
+            return out
+
     @staticmethod
     def _normalize_kind(kind_raw: str) -> str:
-        k = (kind_raw or "").upper()
-        if "COLOR" in k:
+        kind = (kind_raw or "").upper()
+        if "COLOR" in kind:
             return "COLOR"
-        if "SIZE" in k:
+        if "SIZE" in kind:
             return "SIZE"
-        if "INLINE" in k:
+        if "INLINE" in kind:
             return "INLINE_STYLE"
         return "UNKNOWN"
 
     def _build_token_to_value_map(self, figma_tokens: Dict[str, Any]) -> Dict[str, str]:
         """
-        Supports either:
-          - {token_name: value}
-          - {category: {token_name: value}} (nested)
+        Supports both:
+        - {token_name: value}
+        - nested token dicts
         """
         flat: Dict[str, str] = {}
 
         def walk(prefix: str, obj: Any) -> None:
             if isinstance(obj, dict):
-                for k, v in obj.items():
-                    walk(f"{prefix}{k}." if prefix else f"{k}.", v)
+                for key, value in obj.items():
+                    walk(f"{prefix}{key}." if prefix else f"{key}.", value)
             else:
-                # leaf value
                 token_name = prefix[:-1] if prefix.endswith(".") else prefix
                 flat[token_name] = str(obj)
 
-        # Heuristic: if most values are dict => nested
         if any(isinstance(v, dict) for v in figma_tokens.values()):
             walk("", figma_tokens)
         else:
-            for k, v in figma_tokens.items():
-                flat[str(k)] = str(v)
+            for key, value in figma_tokens.items():
+                flat[str(key)] = str(value)
 
         return flat
 
     def _build_value_to_token_map(self, figma_tokens: Dict[str, Any]) -> Dict[str, str]:
+        """
+        Builds normalized value -> token lookup.
+
+        If multiple tokens normalize to the same value, the first one encountered wins.
+        This keeps behavior deterministic enough for capstone/demo purposes.
+        """
         token_to_value = self._build_token_to_value_map(figma_tokens)
         value_to_token: Dict[str, str] = {}
+
         for token, value in token_to_value.items():
-            # store normalized for COLOR/SIZE in a broad way (we’ll normalize per kind during lookup)
-            # For value_to_token we normalize color-ish strings and keep raw sizes too.
             norm_color = self._normalize_color(value)
-            if norm_color:
+            if norm_color and norm_color not in value_to_token:
                 value_to_token[norm_color] = token
+
             norm_size = self._normalize_size(value)
-            if norm_size:
+            if norm_size and norm_size not in value_to_token:
                 value_to_token[norm_size] = token
+
         return value_to_token
 
     def _normalize_value(self, value: str, kind: str) -> str:
         if kind == "COLOR":
-            norm = self._normalize_color(value)
-            return norm or value.strip().lower()
+            normalized = self._normalize_color(value)
+            return normalized or value.strip().lower()
+
         if kind == "SIZE":
-            norm = self._normalize_size(value)
-            return norm or value.strip().lower()
+            normalized = self._normalize_size(value)
+            return normalized or value.strip().lower()
+
         return value.strip().lower()
 
     @staticmethod
     def _normalize_color(value: str) -> Optional[str]:
-        v = value.strip().lower()
+        raw = value.strip().lower()
 
-        # hex normalize (#fff -> #ffffff)
-        if v.startswith("#") and len(v) in (4, 7):
-            if len(v) == 4:
-                r, g, b = v[1], v[2], v[3]
+        # Normalize hex (#fff -> #ffffff)
+        if raw.startswith("#") and len(raw) in (4, 7):
+            if len(raw) == 4:
+                r, g, b = raw[1], raw[2], raw[3]
                 return f"#{r}{r}{g}{g}{b}{b}"
-            return v
+            return raw
 
-        # rgb/rgba to hex (ignore alpha for parity matching)
-        if v.startswith("rgb"):
+        # Normalize rgb()/rgba() to hex (alpha ignored for parity matching)
+        if raw.startswith("rgb"):
             nums = []
-            cur = ""
-            for ch in v:
+            current = ""
+            for ch in raw:
                 if ch.isdigit() or ch == ".":
-                    cur += ch
+                    current += ch
                 else:
-                    if cur:
-                        nums.append(cur)
-                        cur = ""
-            if cur:
-                nums.append(cur)
+                    if current:
+                        nums.append(current)
+                        current = ""
+            if current:
+                nums.append(current)
 
             if len(nums) >= 3:
                 try:
@@ -324,23 +415,24 @@ class StylistAgent:
                     return f"#{r:02x}{g:02x}{b:02x}"
                 except Exception:
                     return None
+
         return None
 
     @staticmethod
     def _normalize_size(value: str) -> Optional[str]:
-        v = value.strip().lower()
-        # Normalize "12px" "12.0px" -> "12px", "1.50rem" -> "1.5rem"
-        import re
+        raw = value.strip().lower()
 
-        m = re.match(r"^(\d+(?:\.\d+)?)(px|rem|em|%)$", v)
-        if not m:
+        import re
+        match = re.match(r"^(\d+(?:\.\d+)?)(px|rem|em|%)$", raw)
+        if not match:
             return None
-        num = float(m.group(1))
-        unit = m.group(2)
-        # Remove trailing .0
-        if num.is_integer():
-            return f"{int(num)}{unit}"
-        return f"{num}{unit}"
+
+        number = float(match.group(1))
+        unit = match.group(2)
+
+        if number.is_integer():
+            return f"{int(number)}{unit}"
+        return f"{number}{unit}"
 
     def _approximate_color_match(
         self,
@@ -348,48 +440,62 @@ class StylistAgent:
         token_to_value: Dict[str, str],
     ) -> Tuple[Optional[str], Optional[float]]:
         """
-        Returns (token, similarity) where similarity is 0..1.
-        Uses simple RGB distance; capstone-appropriate.
+        Returns (token, similarity) where similarity is in [0, 1].
+        Approximate matching is only used for color recommendations.
         """
-        target = self._hex_to_rgb(normalized_value)
-        if target is None:
+        target_rgb = self._hex_to_rgb(normalized_value)
+        if target_rgb is None:
             return None, None
 
-        best_token = None
-        best_sim = 0.0
+        best_token: Optional[str] = None
+        best_similarity = 0.0
 
-        for token, raw_val in token_to_value.items():
-            norm = self._normalize_color(raw_val)
-            if not norm:
+        for token, raw_value in token_to_value.items():
+            normalized_token_value = self._normalize_color(raw_value)
+            if not normalized_token_value:
                 continue
-            rgb = self._hex_to_rgb(norm)
-            if not rgb:
+
+            token_rgb = self._hex_to_rgb(normalized_token_value)
+            if not token_rgb:
                 continue
-            sim = self._rgb_similarity(target, rgb)
-            if sim > best_sim:
-                best_sim = sim
+
+            similarity = self._rgb_similarity(target_rgb, token_rgb)
+            if similarity > best_similarity:
+                best_similarity = similarity
                 best_token = token
 
-        return best_token, best_sim if best_token else (None, None)
+        if best_token is not None:
+            return best_token, best_similarity
+
+        return None, None
 
     @staticmethod
-    def _hex_to_rgb(hexv: str) -> Optional[Tuple[int, int, int]]:
-        h = hexv.strip().lower()
-        if not (h.startswith("#") and len(h) == 7):
+    def _hex_to_rgb(hex_value: str) -> Optional[Tuple[int, int, int]]:
+        raw = hex_value.strip().lower()
+        if not (raw.startswith("#") and len(raw) == 7):
             return None
+
         try:
-            return int(h[1:3], 16), int(h[3:5], 16), int(h[5:7], 16)
+            return (
+                int(raw[1:3], 16),
+                int(raw[3:5], 16),
+                int(raw[5:7], 16),
+            )
         except Exception:
             return None
 
     @staticmethod
     def _rgb_similarity(a: Tuple[int, int, int], b: Tuple[int, int, int]) -> float:
-        # Euclidean distance normalized to [0,1]
+        """
+        Euclidean RGB similarity normalized to [0, 1].
+        """
         import math
 
         dr = a[0] - b[0]
         dg = a[1] - b[1]
         db = a[2] - b[2]
-        dist = math.sqrt(dr * dr + dg * dg + db * db)
-        max_dist = math.sqrt(255 * 255 * 3)
-        return 1.0 - (dist / max_dist)
+
+        distance = math.sqrt(dr * dr + dg * dg + db * db)
+        max_distance = math.sqrt(255 * 255 * 3)
+
+        return 1.0 - (distance / max_distance)
