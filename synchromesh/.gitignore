@@ -1,0 +1,89 @@
+# -----------------------------
+# Environment & Secrets
+# -----------------------------
+.env
+.env.*
+*.env
+
+# -----------------------------
+# Python Virtual Environments
+# -----------------------------
+.venv/
+venv/
+env/
+ENV/
+
+# -----------------------------
+# Python Cache
+# -----------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.py[cod]
+
+# -----------------------------
+# Logs
+# -----------------------------
+*.log
+logs/
+
+# -----------------------------
+# IDE / Editor Files
+# -----------------------------
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# -----------------------------
+# OS Files
+# -----------------------------
+.DS_Store
+Thumbs.db
+
+# -----------------------------
+# Streamlit Cache
+# -----------------------------
+.streamlit/
+
+# -----------------------------
+# Build / Distribution
+# -----------------------------
+build/
+dist/
+*.egg-info/
+
+# -----------------------------
+# Project Generated Outputs
+# -----------------------------
+outputs/
+evaluation/reports/
+reports/
+artifacts/
+
+# -----------------------------
+# Temporary Files
+# -----------------------------
+*.tmp
+*.temp
+*.bak
+*.swp
+
+# -----------------------------
+# Notebook Checkpoints
+# -----------------------------
+.ipynb_checkpoints/
+
+# -----------------------------
+# Coverage / Testing
+# -----------------------------
+.coverage
+coverage/
+htmlcov/
+.pytest_cache/
+
+# -----------------------------
+# MCP Runtime Artifacts
+# -----------------------------
+.mcp_cache/

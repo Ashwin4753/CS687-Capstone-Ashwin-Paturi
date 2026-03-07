@@ -1,0 +1,22 @@
+# --- Core Frameworks ---
+google-adk
+mcp
+streamlit
+
+# --- AI & LLM Connectivity ---
+google-generativeai
+
+# --- Data Processing & Evaluation ---
+pandas
+numpy
+pyyaml
+python-dotenv
+
+# --- Visualization & UI Components ---
+plotly
+altair
+streamlit-extras
+
+# --- Integration Utilities ---
+httpx
+pydantic
