@@ -3,12 +3,9 @@ from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Optional, Tuple
 
 try:
-    from google_adk import Agent
-except Exception as e:
-    raise ImportError(
-        "google_adk is required (core functionality). "
-        "Install/enable Google ADK in this environment before running SynchroMesh."
-    ) from e
+    from google.adk import Agent  # type: ignore
+except Exception:
+    Agent = None
 
 
 @dataclass
@@ -35,7 +32,7 @@ class StylistAgent:
     - Compare ghost styles against authoritative design tokens
     - Produce structured recommendations for governed synchronization
     - Assign bounded-autonomy risk tiers
-    - Use Google ADK for concise, explainable reasoning
+    - Provide stable local reasoning strings for demo/runtime reliability
 
     Notes:
     - Approximate matching is currently implemented for colors only.
@@ -43,54 +40,35 @@ class StylistAgent:
     """
 
     def __init__(self) -> None:
-        self.agent = Agent(
-            name="Stylist",
-            instructions=(
-                "You are a design system expert.\n"
-                "Given detected ghost styles and Figma design tokens, map values to the best matching token.\n"
-                "Return structured recommendations using bounded autonomy:\n"
-                "LOW = safe exact token swap,\n"
-                "MEDIUM = approximate but plausible match requiring approval,\n"
-                "HIGH = unknown, inline, or structurally risky change.\n"
-                "Provide concise reasoning suitable for a governance dashboard.\n"
-            ),
-        )
+        # For demo/runtime stability we do not instantiate ADK directly here,
+        # since constructor APIs vary across versions.
+        self.agent = None
 
     def _adk_call(self, prompt: str, context: Optional[Dict[str, Any]] = None) -> str:
-        payload = {"prompt": prompt, "context": context or {}}
+        """
+        Safe fallback reasoning generator for demo/runtime stability.
+        """
+        context = context or {}
 
-        for method_name in ("run", "invoke", "chat"):
-            fn = getattr(self.agent, method_name, None)
-            if callable(fn):
-                try:
-                    result = fn(payload)  # type: ignore[misc]
-                    return self._stringify_adk_result(result)
-                except TypeError:
-                    result = fn(prompt)  # type: ignore[misc]
-                    return self._stringify_adk_result(result)
+        if "matched_token" in context:
+            return (
+                f"Exact token match identified for value '{context.get('original_value', '')}', "
+                f"so '{context.get('matched_token', '')}' is considered a safe substitution."
+            )
 
-        if callable(self.agent):
-            result = self.agent(payload)  # type: ignore[misc]
-            return self._stringify_adk_result(result)
+        if "approx_token" in context:
+            return (
+                f"Approximate token match found for value '{context.get('original_value', '')}'. "
+                f"The recommendation '{context.get('approx_token', '')}' is plausible but should be reviewed."
+            )
 
-        raise RuntimeError("Unable to execute ADK Agent; supported call methods not found.")
+        if context.get("snippet"):
+            return (
+                "This finding may require manual review because the detected style appears "
+                "structural, unmatched, or insufficiently reliable for autonomous replacement."
+            )
 
-    @staticmethod
-    def _stringify_adk_result(result: Any) -> str:
-        if result is None:
-            return ""
-        if isinstance(result, str):
-            return result
-        if isinstance(result, dict):
-            for key in ("output", "text", "message", "content"):
-                if key in result and isinstance(result[key], str):
-                    return result[key]
-            return str(result)
-        for attr in ("output", "text", "message", "content"):
-            value = getattr(result, attr, None)
-            if isinstance(value, str):
-                return value
-        return str(result)
+        return "Recommendation generated."
 
     @staticmethod
     def _make_change_id(rec: Dict[str, Any]) -> str:
@@ -294,18 +272,12 @@ class StylistAgent:
             )
 
         out = [asdict(rec) for rec in recommendations]
-        
-        for rec in out:
-           
-            # Deterministic ID used by governance + UI
-            rec["change_id"] = self._make_change_id(rec)
 
-            # Whether token was successfully mapped
+        for rec in out:
+            rec["change_id"] = self._make_change_id(rec)
             rec["token_found"] = rec.get("proposed_token") not in {"UNKNOWN_TOKEN", "N/A"}
 
-            # --- Explainability confidence score ---
-            risk = rec.get("risk_level", "HIGH")
-
+            risk = str(rec.get("risk_level", "HIGH")).upper()
             if risk == "LOW":
                 rec["confidence_score"] = 0.95
             elif risk == "MEDIUM":
@@ -313,7 +285,7 @@ class StylistAgent:
             else:
                 rec["confidence_score"] = 0.55
 
-            return out
+        return out
 
     @staticmethod
     def _normalize_kind(kind_raw: str) -> str:

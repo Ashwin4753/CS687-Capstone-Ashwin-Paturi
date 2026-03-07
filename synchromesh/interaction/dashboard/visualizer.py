@@ -10,18 +10,14 @@ def _mini_bar(value: int, max_value: int, width: int = 16) -> str:
 
 def render_metrics(context_store):
     """
-    Renders dashboard-ready runtime metrics + Tier 1 evaluation insights.
-
-    Designed for the redesigned UI:
-    - compact top summary feel
-    - executive-style metrics first
-    - insight previews below
+    Dashboard summary page only.
+    Compact, formal, and closer to an enterprise governance dashboard.
     """
     memory = getattr(context_store, "shared_memory", {}) or {}
     metrics = memory.get("metrics", {}) or {}
     evaluation = memory.get("evaluation", {}) or {}
 
-    st.markdown("### Dashboard Summary")
+    st.markdown("### Dashboard")
 
     if not metrics:
         st.info("No metrics yet. Run the pipeline to generate evaluation results.")
@@ -31,14 +27,11 @@ def render_metrics(context_store):
     target = metrics.get("target_parity_score", 95.0)
     risk_counts = metrics.get("risk_counts", {}) or {}
 
-    # -------------------------
-    # Top KPI row
-    # -------------------------
-    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-    kpi1.metric("Design–Code Parity", f"{parity}%")
-    kpi2.metric("Findings", metrics.get("total_findings", 0))
-    kpi3.metric("Applied Patches", metrics.get("patches_applied", 0))
-    kpi4.metric("Fix Success", f"{metrics.get('fix_success_rate', 0)}%")
+    top1, top2, top3, top4 = st.columns(4)
+    top1.metric("Design–Code Parity", f"{parity}%")
+    top2.metric("Findings", metrics.get("total_findings", 0))
+    top3.metric("Applied Patches", metrics.get("patches_applied", 0))
+    top4.metric("Fix Success", f"{metrics.get('fix_success_rate', 0)}%")
 
     st.caption(
         f"Target parity threshold: {target}% | "
@@ -50,14 +43,10 @@ def render_metrics(context_store):
         progress = min(parity / target, 1.0)
     st.progress(progress)
 
-    # -------------------------
-    # Risk + governance snapshot
-    # -------------------------
     left, right = st.columns([1.15, 1])
 
     with left:
         st.markdown("#### Risk Distribution")
-
         rc1, rc2, rc3 = st.columns(3)
         rc1.metric("LOW", risk_counts.get("LOW", 0))
         rc2.metric("MEDIUM", risk_counts.get("MEDIUM", 0))
@@ -84,9 +73,6 @@ def render_metrics(context_store):
         st.write(f"**Recommendations:** {metrics.get('recommendations_total', 0)}")
         st.write(f"**Run Timestamp:** `{metrics.get('timestamp', '')}`")
 
-    # -------------------------
-    # Tier 1 / Evaluation insights
-    # -------------------------
     if evaluation:
         st.divider()
         st.markdown("### Evaluation & Tier 1 Insights")
@@ -98,10 +84,10 @@ def render_metrics(context_store):
         component_impact = evaluation.get("component_impact", []) or []
         ground_truth = evaluation.get("ground_truth_validation", {}) or {}
 
-        insight1, insight2, insight3 = st.columns(3)
-        insight1.metric("Formal Parity", f"{formal_parity.get('parity_score', 0)}%")
-        insight2.metric("Token Coverage", f"{token_coverage.get('coverage_score', 0)}%")
-        insight3.metric("Trace Entries", reasoning_stats.get("entries_total", 0))
+        i1, i2, i3 = st.columns(3)
+        i1.metric("Formal Parity", f"{formal_parity.get('parity_score', 0)}%")
+        i2.metric("Token Coverage", f"{token_coverage.get('coverage_score', 0)}%")
+        i3.metric("Trace Entries", reasoning_stats.get("entries_total", 0))
 
         if token_coverage:
             st.caption(
@@ -109,9 +95,9 @@ def render_metrics(context_store):
                 f"{token_coverage.get('total_tokens_available', 0)} available"
             )
 
-        insight_left, insight_right = st.columns([1, 1])
+        left_insight, right_insight = st.columns([1, 1])
 
-        with insight_left:
+        with left_insight:
             if drift_heatmap:
                 st.markdown("#### Drift Hotspots")
                 max_drift = max(int(row.get("drift_count", 0)) for row in drift_heatmap[:10]) if drift_heatmap else 0
@@ -123,19 +109,15 @@ def render_metrics(context_store):
 
             if reasoning_stats:
                 st.markdown("#### Explainability Snapshot")
-                st.write(
-                    f"**With confidence:** {reasoning_stats.get('entries_with_confidence', 0)}"
-                )
-                st.write(
-                    f"**Missing confidence:** {reasoning_stats.get('entries_missing_confidence', 0)}"
-                )
+                st.write(f"**With confidence:** {reasoning_stats.get('entries_with_confidence', 0)}")
+                st.write(f"**Missing confidence:** {reasoning_stats.get('entries_missing_confidence', 0)}")
 
                 avg_conf = reasoning_stats.get("average_confidence_by_agent", {}) or {}
                 if avg_conf:
                     for agent, score in avg_conf.items():
                         st.write(f"**{agent}:** {score}")
 
-        with insight_right:
+        with right_insight:
             if component_impact:
                 st.markdown("#### Component Impact Ranking")
                 for row in component_impact[:8]:

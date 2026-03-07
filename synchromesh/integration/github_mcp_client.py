@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -66,6 +66,10 @@ class GitHubMCPClient:
     async def list_files(self, repo_root: str = "") -> List[str]:
         """
         Returns a list of repository file paths (best-effort).
+
+        Strategy:
+        1. Try repo-tree/list-files tools if the MCP server exposes them.
+        2. Fall back to search_code queries for common frontend file extensions.
         """
         owner, repo = self._require_repo()
 
@@ -74,41 +78,53 @@ class GitHubMCPClient:
                 await session.initialize()
                 tool_names = await self._list_tool_names(session)
 
-                candidates = [
+                tree_candidates = [
                     "get_repo_tree",
                     "get_repository_tree",
                     "list_repo_files",
                     "list_files",
                 ]
-                tool = self._pick_tool(tool_names, candidates)
-                if not tool:
-                    raise RuntimeError(
-                        f"No repo-tree/list-files tool found. Available tools: {tool_names}"
+                tree_tool = self._pick_tool(tool_names, tree_candidates)
+
+                if tree_tool:
+                    payload_candidates = [
+                        {"owner": owner, "repo": repo, "path": repo_root}
+                        if repo_root else
+                        {"owner": owner, "repo": repo},
+                        {"owner": owner, "repo": repo, "directory": repo_root}
+                        if repo_root else
+                        {"owner": owner, "repo": repo},
+                        {"owner": owner, "repo": repo, "root": repo_root}
+                        if repo_root else
+                        {"owner": owner, "repo": repo},
+                        {"owner": owner, "repo": repo},
+                    ]
+
+                    for payload in payload_candidates:
+                        try:
+                            result = await session.call_tool(tree_tool, payload)
+                            files = self._extract_file_list(result)
+                            if files:
+                                return self._filter_repo_root(files, repo_root)
+                        except Exception:
+                            continue
+
+                search_tool = self._pick_tool(tool_names, ["search_code"])
+                if search_tool:
+                    files = await self._search_code_file_list(
+                        session=session,
+                        search_tool=search_tool,
+                        owner=owner,
+                        repo=repo,
+                        repo_root=repo_root,
                     )
+                    if files:
+                        return files
 
-                payload_candidates = [
-                    {"owner": owner, "repo": repo, "path": repo_root} if repo_root else {"owner": owner, "repo": repo},
-                    {"owner": owner, "repo": repo, "directory": repo_root} if repo_root else {"owner": owner, "repo": repo},
-                    {"owner": owner, "repo": repo, "root": repo_root} if repo_root else {"owner": owner, "repo": repo},
-                    {"owner": owner, "repo": repo},
-                ]
-
-                last_error = None
-                for payload in payload_candidates:
-                    try:
-                        result = await session.call_tool(tool, payload)
-                        files = self._extract_file_list(result)
-                        if files:
-                            return files
-                    except Exception as e:
-                        last_error = e
-
-                if last_error:
-                    raise RuntimeError(
-                        f"Failed to list files using tool '{tool}' with known payload formats."
-                    ) from last_error
-
-                return []
+                raise RuntimeError(
+                    "Unable to discover repository files. "
+                    f"Available tools: {tool_names}"
+                )
 
     async def read_file(self, path: str) -> str:
         owner, repo = self._require_repo()
@@ -130,11 +146,27 @@ class GitHubMCPClient:
                         f"No read-file tool found. Available tools: {tool_names}"
                     )
 
-                result = await session.call_tool(
-                    tool,
+                payload_candidates = [
                     {"owner": owner, "repo": repo, "path": path},
-                )
-                return self._extract_text_content(result)
+                    {"owner": owner, "repo": repo, "file_path": path},
+                ]
+
+                last_error = None
+                for payload in payload_candidates:
+                    try:
+                        result = await session.call_tool(tool, payload)
+                        text = self._extract_text_content(result)
+                        if text:
+                            return text
+                    except Exception as e:
+                        last_error = e
+
+                if last_error:
+                    raise RuntimeError(
+                        f"Failed to read file '{path}' using tool '{tool}'."
+                    ) from last_error
+
+                return ""
 
     async def write_file(self, path: str, content: str) -> None:
         """
@@ -200,6 +232,74 @@ class GitHubMCPClient:
                         "body": body,
                     },
                 )
+
+    async def _search_code_file_list(
+        self,
+        session: ClientSession,
+        search_tool: str,
+        owner: str,
+        repo: str,
+        repo_root: str = "",
+    ) -> List[str]:
+        """
+        Fallback file discovery using GitHub code search.
+
+        This is useful when the MCP server does not expose a repo tree tool.
+        """
+        normalized_root = self._normalize_repo_root(repo_root)
+        files: Set[str] = set()
+        last_error = None
+
+        extensions = ["tsx", "ts", "jsx", "js", "css", "scss"]
+
+        for ext in extensions:
+            queries = [f"repo:{owner}/{repo} extension:{ext}"]
+            if normalized_root:
+                queries.insert(0, f"repo:{owner}/{repo} path:{normalized_root} extension:{ext}")
+
+            for query in queries:
+                payload_candidates = [
+                    {"q": query},
+                    {"query": query},
+                    {"search_query": query},
+                ]
+
+                success_for_query = False
+
+                for payload in payload_candidates:
+                    try:
+                        result = await session.call_tool(search_tool, payload)
+                        discovered = self._extract_search_code_paths(result)
+
+                        for path in discovered:
+                            normalized_path = path.replace("\\", "/").lstrip("./")
+                            if normalized_root:
+                                if (
+                                    normalized_path == normalized_root
+                                    or normalized_path.startswith(normalized_root + "/")
+                                ):
+                                    files.add(normalized_path)
+                            else:
+                                files.add(normalized_path)
+
+                        success_for_query = True
+                        break
+                    except Exception as e:
+                        last_error = e
+                        continue
+
+                if success_for_query:
+                    continue
+
+        if files:
+            return sorted(files)
+
+        if last_error:
+            raise RuntimeError(
+                f"Fallback search_code discovery failed for repo {owner}/{repo}."
+            ) from last_error
+
+        return []
 
     def _require_repo(self):
         if not self.owner or not self.repo:
@@ -296,3 +396,61 @@ class GitHubMCPClient:
                 return out
 
         return []
+
+    @staticmethod
+    def _extract_search_code_paths(result: Any) -> List[str]:
+        """
+        Best-effort extraction of file paths from search_code tool output.
+        Supports several likely shapes.
+        """
+        raw_text = GitHubMCPClient._extract_text_content(result)
+        if not raw_text:
+            return []
+
+        try:
+            data = json.loads(raw_text)
+        except Exception:
+            return []
+
+        paths: List[str] = []
+
+        def walk(obj: Any):
+            if isinstance(obj, dict):
+                if "path" in obj and isinstance(obj["path"], str):
+                    paths.append(obj["path"])
+                for value in obj.values():
+                    walk(value)
+            elif isinstance(obj, list):
+                for item in obj:
+                    walk(item)
+
+        walk(data)
+
+        seen = set()
+        out = []
+        for path in paths:
+            if path not in seen:
+                seen.add(path)
+                out.append(path)
+
+        return out
+
+    @staticmethod
+    def _normalize_repo_root(repo_root: str) -> str:
+        root = str(repo_root or "").strip().replace("\\", "/")
+        if root in {"", ".", "./"}:
+            return ""
+        return root.strip("/")
+
+    @classmethod
+    def _filter_repo_root(cls, files: List[str], repo_root: str) -> List[str]:
+        normalized_root = cls._normalize_repo_root(repo_root)
+        normalized_files = [str(path).replace("\\", "/").lstrip("./") for path in files]
+
+        if not normalized_root:
+            return normalized_files
+
+        return [
+            path for path in normalized_files
+            if path == normalized_root or path.startswith(normalized_root + "/")
+        ]

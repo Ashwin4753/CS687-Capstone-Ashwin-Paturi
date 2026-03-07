@@ -17,14 +17,11 @@ def _risk_badge(risk: str) -> str:
 
 def render_approval_queue(context_store, settings: Optional[dict] = None):
     """
-    Detailed governance review UI.
+    Detailed governance review module.
 
-    Purpose in the redesigned dashboard:
-    - summarize governance policy results
-    - provide detailed inspection of autonomous / approval-required / blocked items
-    - keep checkbox state synchronized with selected approvals
+    Shown below the main content for the dashboard/detected drift sections.
     """
-    st.markdown("#### Governance Review")
+    st.markdown("### Governance Review")
 
     memory = getattr(context_store, "shared_memory", {}) or {}
     recommendations = memory.get("recommendations", []) or []
@@ -55,10 +52,10 @@ def render_approval_queue(context_store, settings: Optional[dict] = None):
     if "approved_change_ids" not in st.session_state:
         st.session_state["approved_change_ids"] = set()
 
-    summary_col1, summary_col2, summary_col3 = st.columns(3)
-    summary_col1.metric("Autonomous", len(buckets["autonomous"]))
-    summary_col2.metric("Needs Approval", len(buckets["approval_required"]))
-    summary_col3.metric("Blocked", len(buckets["blocked"]))
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Autonomous", len(buckets["autonomous"]))
+    c2.metric("Needs Approval", len(buckets["approval_required"]))
+    c3.metric("Blocked", len(buckets["blocked"]))
 
     st.caption(
         f"Policy: auto_apply_low_risk={auto_approve_low} | "
@@ -68,9 +65,6 @@ def render_approval_queue(context_store, settings: Optional[dict] = None):
 
     review_tabs = st.tabs(["Needs Approval", "Blocked", "Autonomous"])
 
-    # -------------------------
-    # Needs Approval
-    # -------------------------
     with review_tabs[0]:
         approval_required = buckets["approval_required"]
 
@@ -126,9 +120,6 @@ def render_approval_queue(context_store, settings: Optional[dict] = None):
                         else:
                             st.session_state["approved_change_ids"].discard(change_id)
 
-    # -------------------------
-    # Blocked
-    # -------------------------
     with review_tabs[1]:
         blocked = buckets["blocked"]
 
@@ -150,9 +141,6 @@ def render_approval_queue(context_store, settings: Optional[dict] = None):
                     if rec.get("snippet"):
                         st.code(rec["snippet"], language="tsx")
 
-    # -------------------------
-    # Autonomous
-    # -------------------------
     with review_tabs[2]:
         autonomous = buckets["autonomous"]
 

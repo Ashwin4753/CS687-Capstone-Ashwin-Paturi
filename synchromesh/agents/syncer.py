@@ -3,12 +3,9 @@ from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Optional, Tuple
 
 try:
-    from google_adk import Agent
-except Exception as e:
-    raise ImportError(
-        "google_adk is required (core functionality). "
-        "Install/enable Google ADK in this environment before running SynchroMesh."
-    ) from e
+    from google.adk import Agent  # type: ignore
+except Exception:
+    Agent = None
 
 
 @dataclass
@@ -28,7 +25,7 @@ class SyncerAgent:
     Responsibilities:
     - Apply APPROVED LOW-risk token substitutions
     - Generate unified diffs for auditability
-    - Produce PR draft content via ADK
+    - Produce PR draft content with a stable local fallback
     - Respect bounded autonomy (never auto-apply MEDIUM/HIGH)
 
     Notes:
@@ -37,51 +34,47 @@ class SyncerAgent:
     """
 
     def __init__(self) -> None:
-        self.agent = Agent(
-            name="Syncer",
-            instructions=(
-                "You are a DevOps and refactoring specialist.\n"
-                "Apply approved LOW-risk token substitutions safely.\n"
-                "Generate auditable diffs and concise pull request summaries.\n"
-                "Never apply MEDIUM or HIGH-risk changes automatically.\n"
-            ),
-        )
+        # For demo/runtime stability we do not instantiate ADK directly here,
+        # since constructor APIs vary across versions.
+        self.agent = None
 
     def _adk_call(self, prompt: str, context: Optional[Dict[str, Any]] = None) -> str:
-        payload = {"prompt": prompt, "context": context or {}}
+        """
+        Safe fallback PR body generator for demo/runtime stability.
+        """
+        context = context or {}
+        applied_count = context.get("applied_count", 0)
+        skipped_count = context.get("skipped_count", 0)
+        files_changed = context.get("files_changed", []) or []
 
-        for method_name in ("run", "invoke", "chat"):
-            fn = getattr(self.agent, method_name, None)
-            if callable(fn):
-                try:
-                    result = fn(payload)  # type: ignore[misc]
-                    return self._stringify_adk_result(result)
-                except TypeError:
-                    result = fn(prompt)  # type: ignore[misc]
-                    return self._stringify_adk_result(result)
+        lines = [
+            "## Summary",
+            f"- Applied substitutions: {applied_count}",
+            f"- Skipped substitutions: {skipped_count}",
+            "",
+            "## Governance & Safety",
+            "- Only approved LOW-risk substitutions were applied automatically.",
+            "- MEDIUM/HIGH-risk findings remain subject to human review.",
+            "",
+            "## Files Changed",
+        ]
 
-        if callable(self.agent):
-            result = self.agent(payload)  # type: ignore[misc]
-            return self._stringify_adk_result(result)
+        if files_changed:
+            for file_path in files_changed[:20]:
+                lines.append(f"- {file_path}")
+        else:
+            lines.append("- No files changed.")
 
-        raise RuntimeError("Unable to execute ADK Agent; supported call methods not found.")
+        lines.extend(
+            [
+                "",
+                "## Reviewer Guidance",
+                "- Verify token substitutions preserve intended visual behavior.",
+                "- Review adjacent components for consistency where shared styles are used.",
+            ]
+        )
 
-    @staticmethod
-    def _stringify_adk_result(result: Any) -> str:
-        if result is None:
-            return ""
-        if isinstance(result, str):
-            return result
-        if isinstance(result, dict):
-            for key in ("output", "text", "message", "content"):
-                if key in result and isinstance(result[key], str):
-                    return result[key]
-            return str(result)
-        for attr in ("output", "text", "message", "content"):
-            value = getattr(result, attr, None)
-            if isinstance(value, str):
-                return value
-        return str(result)
+        return "\n".join(lines)
 
     async def apply_token_swaps(
         self,
@@ -178,8 +171,7 @@ class SyncerAgent:
 
         pr_title = f"SynchroMesh: Token sync ({total_applied} substitutions)"
         pr_body = self._adk_call(
-            "Write a concise GitHub Pull Request description for an automated design-token synchronization.\n"
-            "Include a summary, governance/safety note, changed files, and reviewer guidance.",
+            "Write a concise GitHub Pull Request description for an automated design-token synchronization.",
             context={
                 "applied_count": total_applied,
                 "skipped_count": total_skipped,

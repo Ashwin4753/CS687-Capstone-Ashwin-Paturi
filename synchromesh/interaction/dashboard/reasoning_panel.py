@@ -14,10 +14,11 @@ def _risk_badge(risk: str) -> str:
 
 def render_agent_logs(context_store):
     """
-    Displays recommendation reasoning, structured trace logs,
-    and explainability/audit summaries in a compact tabbed layout.
+    Dedicated review logs page.
+    Formal and segmented layout for run metadata, recommendation reasoning,
+    and structured trace logs.
     """
-    st.markdown("#### Agent Reasoning & Audit")
+    st.markdown("### Review Logs")
 
     memory = getattr(context_store, "shared_memory", {}) or {}
     recommendations = memory.get("recommendations", []) or []
@@ -29,7 +30,6 @@ def render_agent_logs(context_store):
         st.info("No reasoning or trace data available yet. Run the pipeline to generate audit evidence.")
         return
 
-    # Top summary strip
     top_cols = st.columns([1, 1, 1, 1])
     top_cols[0].metric("Recommendations", len(recommendations))
     top_cols[1].metric("Trace Logs", len(trace_logs))
@@ -40,14 +40,11 @@ def render_agent_logs(context_store):
         ["Run Summary", "Recommendation Reasoning", "Structured Trace Logs"]
     )
 
-    # -------------------------
-    # Run summary
-    # -------------------------
     with meta_tab:
         left, right = st.columns([1.2, 1])
 
         with left:
-            st.markdown("##### Run Metadata")
+            st.markdown("#### Run Metadata")
             st.write(f"**Run ID:** `{memory.get('run_id', '')}`")
             st.write(f"**Repo:** `{memory.get('repo', '')}`")
             st.write(f"**Figma File ID:** `{memory.get('figma_file_id', '')}`")
@@ -58,15 +55,11 @@ def render_agent_logs(context_store):
                 st.write(f"**Report Path:** `{memory.get('report_path', '')}`")
 
         with right:
-            st.markdown("##### Explainability Summary")
+            st.markdown("#### Explainability Summary")
             if reasoning_stats:
                 st.write(f"**Trace entries total:** {reasoning_stats.get('entries_total', 0)}")
-                st.write(
-                    f"**Entries with confidence:** {reasoning_stats.get('entries_with_confidence', 0)}"
-                )
-                st.write(
-                    f"**Entries missing confidence:** {reasoning_stats.get('entries_missing_confidence', 0)}"
-                )
+                st.write(f"**Entries with confidence:** {reasoning_stats.get('entries_with_confidence', 0)}")
+                st.write(f"**Entries missing confidence:** {reasoning_stats.get('entries_missing_confidence', 0)}")
 
                 avg_conf = reasoning_stats.get("average_confidence_by_agent", {}) or {}
                 if avg_conf:
@@ -82,9 +75,6 @@ def render_agent_logs(context_store):
             else:
                 st.caption("No explainability summary available yet.")
 
-    # -------------------------
-    # Recommendation reasoning
-    # -------------------------
     with rec_tab:
         if not recommendations:
             st.info("No governed recommendations available.")
@@ -129,7 +119,6 @@ def render_agent_logs(context_store):
                             str(rec.get("reasoning", "")),
                         ]
                     ).lower()
-
                     if search_l not in haystack:
                         continue
 
@@ -171,7 +160,7 @@ def render_agent_logs(context_store):
                             st.write(f"**Risk Reason:** {rec.get('risk_reason')}")
 
                     if rec.get("reasoning"):
-                        st.markdown("**Agent Reasoning (ADK)**")
+                        st.markdown("**Agent Reasoning**")
                         st.write(rec.get("reasoning"))
 
                     if rec.get("snippet"):
@@ -183,9 +172,6 @@ def render_agent_logs(context_store):
                             f"Approved by `{rec.get('approved_by', '')}` at `{rec.get('approved_at', '')}`"
                         )
 
-    # -------------------------
-    # Structured trace logs
-    # -------------------------
     with trace_tab:
         if not trace_logs:
             st.info("No structured trace logs available for this run.")

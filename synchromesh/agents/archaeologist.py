@@ -3,12 +3,9 @@ from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Optional
 
 try:
-    from google_adk import Agent
-except Exception as e:
-    raise ImportError(
-        "google_adk is required (core functionality). "
-        "Install/enable Google ADK in this environment before running SynchroMesh."
-    ) from e
+    from google.adk import Agent  # type: ignore
+except Exception:
+    Agent = None
 
 
 @dataclass
@@ -28,7 +25,7 @@ class ArchaeologistAgent:
     Responsibilities:
     - Scan code content for hard-coded visual values ("ghost styles")
     - Surface lightweight dependency/coupling signals from import usage
-    - Use Google ADK for explainability summaries
+    - Provide explainability summaries with a stable local fallback
 
     Notes:
     - Detection is heuristic and regex-based (not AST-based).
@@ -43,54 +40,33 @@ class ArchaeologistAgent:
     _INLINE_STYLE_PATTERN = re.compile(r"\bstyle\s*=\s*\{\{.*?\}\}", re.DOTALL)
 
     def __init__(self) -> None:
-        self.agent = Agent(
-            name="Archaeologist",
-            instructions=(
-                "You are an expert in legacy code analysis.\n"
-                "Your goal is to identify hard-coded visual values ('Ghost Styles') such as "
-                "colors, sizes, and inline styles that should be replaced by design tokens.\n"
-                "When asked, provide concise, explainable summaries of findings and dependency risks.\n"
-            ),
-        )
+        # For demo/runtime stability we do not instantiate ADK directly here,
+        # since constructor APIs vary across versions.
+        self.agent = None
 
     def _adk_call(self, prompt: str, context: Optional[Dict[str, Any]] = None) -> str:
         """
-        Calls the ADK agent in a version-tolerant way.
+        Safe fallback explanation generator for demo/runtime stability.
         """
-        payload = {"prompt": prompt, "context": context or {}}
+        context = context or {}
+        file_count = context.get("file_count", 0)
+        js_ts_file_count = context.get("js_ts_file_count", 0)
+        top_imports = context.get("top_imports", []) or []
 
-        for method_name in ("run", "invoke", "chat"):
-            fn = getattr(self.agent, method_name, None)
-            if callable(fn):
-                try:
-                    result = fn(payload)  # type: ignore[misc]
-                    return self._stringify_adk_result(result)
-                except TypeError:
-                    result = fn(prompt)  # type: ignore[misc]
-                    return self._stringify_adk_result(result)
+        if top_imports:
+            preview = ", ".join(
+                [f"{name} ({count})" for name, count in top_imports[:3]]
+            )
+            return (
+                f"Dependency analysis completed across {file_count} files "
+                f"({js_ts_file_count} JS/TS files). The most frequently referenced imports are "
+                f"{preview}, suggesting these areas may have broader refactor impact."
+            )
 
-        if callable(self.agent):
-            result = self.agent(payload)  # type: ignore[misc]
-            return self._stringify_adk_result(result)
-
-        raise RuntimeError("Unable to execute ADK Agent; supported call methods not found.")
-
-    @staticmethod
-    def _stringify_adk_result(result: Any) -> str:
-        if result is None:
-            return ""
-        if isinstance(result, str):
-            return result
-        if isinstance(result, dict):
-            for key in ("output", "text", "message", "content"):
-                if key in result and isinstance(result[key], str):
-                    return result[key]
-            return str(result)
-        for attr in ("output", "text", "message", "content"):
-            value = getattr(result, attr, None)
-            if isinstance(value, str):
-                return value
-        return str(result)
+        return (
+            f"Dependency analysis completed across {file_count} files "
+            f"({js_ts_file_count} JS/TS files). No dominant shared imports were identified."
+        )
 
     def find_ghost_styles(self, file_content: str, file_path: str = "") -> List[Dict[str, Any]]:
         """
