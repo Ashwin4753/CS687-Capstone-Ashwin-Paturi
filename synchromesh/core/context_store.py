@@ -9,12 +9,15 @@ class ContextStore:
 
     Stores:
       - detected_drift
+      - outdated_components
       - recommendations
       - approved_changes
       - patches
       - metrics
       - evaluation
       - trace_logs
+      - pipeline_status
+      - run_timeline
       - report_path
 
     Also writes traces for evaluation and dashboard use.
@@ -40,23 +43,26 @@ class ContextStore:
             "repo": repo,
             "figma_file_id": figma_file_id,
             "detected_drift": [],
+            "outdated_components": [],
             "recommendations": [],
             "approved_changes": [],
             "patches": [],
             "metrics": {},
             "evaluation": {},
             "trace_logs": [],
+            "pipeline_status": [],
+            "run_timeline": [],
             "report_path": None,
         }
 
     def set_run_context(self, repo: str, figma_file_id: str):
-        """
-        Starts a fresh run and assigns context.
-        """
         self.start_new_run(repo=repo, figma_file_id=figma_file_id)
 
     def add_detected_drift(self, findings: List[dict]):
         self.shared_memory["detected_drift"].extend(findings)
+
+    def add_outdated_components(self, findings: List[dict]):
+        self.shared_memory["outdated_components"].extend(findings)
 
     def add_recommendations(self, recs: List[dict]):
         self.shared_memory["recommendations"].extend(recs)
@@ -76,6 +82,12 @@ class ContextStore:
     def add_trace_logs(self, logs: List[dict]):
         self.shared_memory["trace_logs"].extend(logs)
 
+    def set_pipeline_status(self, stages: List[dict]):
+        self.shared_memory["pipeline_status"] = stages
+
+    def set_run_timeline(self, timeline: List[dict]):
+        self.shared_memory["run_timeline"] = timeline
+
     def set_report_path(self, report_path: str):
         self.shared_memory["report_path"] = report_path
 
@@ -93,23 +105,29 @@ class ContextStore:
         """
         Writes current-run outputs:
           outputs/drift_report.json
+          outputs/outdated_components.json
           outputs/recommendations.json
           outputs/approved_changes.json
           outputs/metrics.json
           outputs/patches.json
           outputs/evaluation.json
           outputs/trace_logs.json
+          outputs/pipeline_status.json
+          outputs/run_timeline.json
         """
         os.makedirs(self.outputs_dir, exist_ok=True)
 
         mapping = {
             "drift_report.json": self.shared_memory["detected_drift"],
+            "outdated_components.json": self.shared_memory["outdated_components"],
             "recommendations.json": self.shared_memory["recommendations"],
             "approved_changes.json": self.shared_memory["approved_changes"],
             "metrics.json": self.shared_memory["metrics"],
             "patches.json": self.shared_memory["patches"],
             "evaluation.json": self.shared_memory["evaluation"],
             "trace_logs.json": self.shared_memory["trace_logs"],
+            "pipeline_status.json": self.shared_memory["pipeline_status"],
+            "run_timeline.json": self.shared_memory["run_timeline"],
         }
 
         out_paths: Dict[str, str] = {}
@@ -119,7 +137,6 @@ class ContextStore:
                 json.dump(payload, f, indent=2)
             out_paths[filename] = path
 
-        # include report path if available
         if self.shared_memory.get("report_path"):
             out_paths["report_path"] = self.shared_memory["report_path"]
 

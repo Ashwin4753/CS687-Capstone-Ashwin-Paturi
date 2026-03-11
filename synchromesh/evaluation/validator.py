@@ -11,7 +11,7 @@ class GroundTruthValidator:
     - This does not validate file/line localization.
     - Suitable for capstone-scale token-matching accuracy evaluation.
     """
-    
+
     def verify_accuracy(
         self,
         agent_output: List[Dict[str, Any]],
@@ -50,20 +50,19 @@ class GroundTruthValidator:
         total_expected = len(expected_set)
         total_predicted = len(predicted_set)
 
-        # In this simplified validation, accuracy is treated as expected-set coverage.
-        accuracy = (correct_matches / total_expected) * 100 if total_expected > 0 else 0.0
-        precision = (correct_matches / total_predicted) * 100 if total_predicted > 0 else 0.0
-        recall = (correct_matches / total_expected) * 100 if total_expected > 0 else 0.0
+        accuracy = round((correct_matches / total_expected) * 100, 2) if total_expected else 0.0
+        precision = round((correct_matches / total_predicted) * 100, 2) if total_predicted else 0.0
+        recall = round((correct_matches / total_expected) * 100, 2) if total_expected else 0.0
 
         f1_score = 0.0
         if precision + recall > 0:
-            f1_score = 2 * ((precision * recall) / (precision + recall))
+            f1_score = round(2 * ((precision * recall) / (precision + recall)), 2)
 
         return {
-            "accuracy": round(accuracy, 2),
-            "precision": round(precision, 2),
-            "recall": round(recall, 2),
-            "f1_score": round(f1_score, 2),
+            "accuracy": accuracy,
+            "precision": precision,
+            "recall": recall,
+            "f1_score": f1_score,
             "correct_matches": correct_matches,
             "false_positives": false_positives,
             "false_negatives": false_negatives,

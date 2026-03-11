@@ -1,7 +1,6 @@
 import json
 import os
-from typing import Dict, List, Any
-
+from typing import Dict, List, Any, Optional
 
 class ParityCalculator:
     """
@@ -20,6 +19,7 @@ class ParityCalculator:
         self,
         drift_report: List[Dict[str, Any]],
         total_components: int,
+        outdated_components: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """
         Computes parity metrics from a drift report.
@@ -27,6 +27,7 @@ class ParityCalculator:
         Parameters:
         - drift_report: list of ghost-style findings
         - total_components: total number of evaluated components/files
+        - outdated_components: optional engineering audit findings
 
         Returns:
         - metrics dict suitable for runtime storage, report generation, and JSON export
@@ -64,6 +65,21 @@ class ParityCalculator:
             )
         ]
 
+        outdated_components = outdated_components or []
+        outdated_component_count = len(outdated_components)
+        outdated_frontend_count = len(
+            [
+                item for item in outdated_components
+                if str(item.get("type", "")).upper() == "OUTDATED_FRONTEND_COMPONENT"
+            ]
+        )
+        outdated_backend_count = len(
+            [
+                item for item in outdated_components
+                if str(item.get("type", "")).upper() == "OUTDATED_BACKEND_MODULE"
+            ]
+        )
+
         metrics = {
             "total_components": total_components,
             "aligned_components": aligned_components,
@@ -73,6 +89,9 @@ class ParityCalculator:
             "parity_score": parity_score,
             "alignment_rate": parity_score,
             "drift_density": drift_density,
+            "outdated_components_detected": outdated_component_count,
+            "outdated_frontend_count": outdated_frontend_count,
+            "outdated_backend_count": outdated_backend_count,
             "component_breakdown": component_breakdown,
         }
 

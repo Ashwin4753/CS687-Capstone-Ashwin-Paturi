@@ -1,5 +1,6 @@
+import math
 import streamlit as st
-
+from typing import Any, Dict, List
 
 def _mini_bar(value: int, max_value: int, width: int = 16) -> str:
     if max_value <= 0:
@@ -7,15 +8,69 @@ def _mini_bar(value: int, max_value: int, width: int = 16) -> str:
     filled = max(1, round((value / max_value) * width)) if value > 0 else 0
     return "█" * filled
 
+def _badge(label: str) -> str:
+    return f"<span class='syn-chip'>{label}</span>"
+
+def _stage_icon(status: str) -> str:
+    status = str(status).lower()
+    if status == "completed":
+        return "✔"
+    if status in {"awaiting_approval", "pending"}:
+        return "⚠"
+    if status == "failed":
+        return "✖"
+    return "•"
+
+def _render_pipeline_grid(pipeline_status: List[Dict[str, Any]], cols_per_row: int = 3) -> None:
+    """
+    Render all pipeline stages in a wrapped grid so no stage is hidden.
+    """
+    if not pipeline_status:
+        st.info("Pipeline status will appear here after execution.")
+        return
+
+    total = len(pipeline_status)
+    rows = math.ceil(total / cols_per_row)
+
+    for row_idx in range(rows):
+        row_items = pipeline_status[row_idx * cols_per_row : (row_idx + 1) * cols_per_row]
+        cols = st.columns(cols_per_row)
+
+        for col_idx in range(cols_per_row):
+            with cols[col_idx]:
+                if col_idx < len(row_items):
+                    stage = row_items[col_idx]
+                    st.markdown(
+                        f"""
+                        <div class="syn-card" style="padding:0.85rem 0.9rem; min-height: 120px;">
+                            <div class="syn-card-title" style="font-size:0.98rem;">
+                                {_stage_icon(stage.get('status', ''))} {stage.get('stage', '')}
+                            </div>
+                            <div class="syn-card-subtitle" style="margin-bottom:0;">
+                                {stage.get('details', '')}
+                            </div>
+                            <div style="margin-top:0.45rem; color:#5f6f84; font-size:0.82rem; font-weight:700;">
+                                Status: {str(stage.get('status', '')).replace('_', ' ').title()}
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.empty()
 
 def render_metrics(context_store):
     """
-    Dashboard summary page only.
-    Compact, formal, and closer to an enterprise governance dashboard.
+    Dashboard summary page.
+    Enterprise-style overview with pipeline, governance, audit, and evaluation signals.
     """
     memory = getattr(context_store, "shared_memory", {}) or {}
     metrics = memory.get("metrics", {}) or {}
     evaluation = memory.get("evaluation", {}) or {}
+    trace_logs = memory.get("trace_logs", []) or []
+    pipeline_status = memory.get("pipeline_status", []) or []
+    run_timeline = memory.get("run_timeline", []) or []
+    outdated_components = memory.get("outdated_components", []) or []
 
     st.markdown("### Dashboard")
 
@@ -27,11 +82,12 @@ def render_metrics(context_store):
     target = metrics.get("target_parity_score", 95.0)
     risk_counts = metrics.get("risk_counts", {}) or {}
 
-    top1, top2, top3, top4 = st.columns(4)
+    top1, top2, top3, top4, top5 = st.columns(5)
     top1.metric("Design–Code Parity", f"{parity}%")
     top2.metric("Findings", metrics.get("total_findings", 0))
     top3.metric("Applied Patches", metrics.get("patches_applied", 0))
     top4.metric("Fix Success", f"{metrics.get('fix_success_rate', 0)}%")
+    top5.metric("Outdated Modules", metrics.get("outdated_component_count", 0))
 
     st.caption(
         f"Target parity threshold: {target}% | "
@@ -42,6 +98,10 @@ def render_metrics(context_store):
     if target > 0:
         progress = min(parity / target, 1.0)
     st.progress(progress)
+
+    st.divider()
+    st.markdown("### Pipeline Visualization")
+    _render_pipeline_grid(pipeline_status, cols_per_row=3)
 
     left, right = st.columns([1.15, 1])
 
@@ -68,10 +128,30 @@ def render_metrics(context_store):
         gc2.metric("Needs Approval", metrics.get("approval_required_count", 0))
         gc3.metric("Blocked", metrics.get("blocked_count", 0))
 
-        st.markdown("#### Pipeline Statistics")
-        st.write(f"**Drift Instances:** {metrics.get('drift_instances', 0)}")
-        st.write(f"**Recommendations:** {metrics.get('recommendations_total', 0)}")
+        st.markdown("#### Safety")
+        st.write("**Autonomy Level:** Bounded")
+        st.write(
+            f"**Human Approval Required:** {'Yes' if metrics.get('approval_required_count', 0) > 0 else 'No'}"
+        )
         st.write(f"**Run Timestamp:** `{metrics.get('timestamp', '')}`")
+
+    st.divider()
+    st.markdown("### Agent Activity Feed")
+    if trace_logs:
+        for entry in list(reversed(trace_logs[-8:])):
+            agent = entry.get("agent_name", "unknown")
+            action = entry.get("action_taken", "")
+            file_path = entry.get("file_path", "")
+            token = entry.get("token", "")
+            line = entry.get("line", "")
+            st.write(
+                f"**[{agent}]** {action}"
+                + (f" — `{file_path}`" if file_path else "")
+                + (f" line {line}" if line not in ("", None) else "")
+                + (f" — `{token}`" if token else "")
+            )
+    else:
+        st.info("Agent activity feed will appear after a run.")
 
     if evaluation:
         st.divider()
@@ -136,3 +216,54 @@ def render_metrics(context_store):
                 gt2.metric("Precision", f"{ground_truth.get('precision', 0)}%")
                 gt3.metric("Recall", f"{ground_truth.get('recall', 0)}%")
                 gt4.metric("F1 Score", f"{ground_truth.get('f1_score', 0)}%")
+
+    st.divider()
+    st.markdown("### Engineering Modernization Audit")
+    if outdated_components:
+        frontend = [
+            item for item in outdated_components
+            if str(item.get("type", "")).upper() == "OUTDATED_FRONTEND_COMPONENT"
+        ]
+        backend = [
+            item for item in outdated_components
+            if str(item.get("type", "")).upper() == "OUTDATED_BACKEND_MODULE"
+        ]
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Audit Findings", len(outdated_components))
+        c2.metric("Frontend", len(frontend))
+        c3.metric("Backend", len(backend))
+
+        left_audit, right_audit = st.columns(2)
+
+        with left_audit:
+            st.markdown("#### Frontend")
+            if frontend:
+                for item in frontend[:8]:
+                    st.write(
+                        f"- `{item.get('file_path', '')}` — {item.get('reason', '')} "
+                        f"({item.get('severity', '')})"
+                    )
+            else:
+                st.caption("No outdated frontend findings.")
+
+        with right_audit:
+            st.markdown("#### Backend")
+            if backend:
+                for item in backend[:8]:
+                    st.write(
+                        f"- `{item.get('file_path', '')}` — {item.get('reason', '')} "
+                        f"({item.get('severity', '')})"
+                    )
+            else:
+                st.caption("No outdated backend findings.")
+    else:
+        st.info("No engineering modernization audit findings yet.")
+
+    st.divider()
+    st.markdown("### Run Timeline")
+    if run_timeline:
+        for item in run_timeline:
+            st.write(f"**{item.get('stage', '')}** — {item.get('duration_s', 0)}s")
+    else:
+        st.info("Timeline appears after a completed run.")

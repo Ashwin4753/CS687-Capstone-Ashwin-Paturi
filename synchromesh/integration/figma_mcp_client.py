@@ -1,10 +1,10 @@
+import asyncio
 import json
 import os
 from typing import Any, Dict, List, Optional
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-
 
 class FigmaMCPClient:
     """
@@ -16,7 +16,7 @@ class FigmaMCPClient:
       - health_check() -> bool
     """
 
-    def __init__(self, server_path: str = "npx"):
+    def __init__(self, server_path: str = "npx", timeout_seconds: int = 15):
         token = os.getenv("FIGMA_ACCESS_TOKEN") or os.getenv("FIGMA_API_KEY")
         if not token:
             raise RuntimeError(
@@ -24,6 +24,7 @@ class FigmaMCPClient:
                 "Do not hardcode secrets in code."
             )
 
+        self.timeout_seconds = timeout_seconds
         self.server_params = StdioServerParameters(
             command=server_path,
             args=["-y", "@modelcontextprotocol/server-figma"],
@@ -40,8 +41,8 @@ class FigmaMCPClient:
     async def list_available_tools(self) -> List[str]:
         async with stdio_client(self.server_params) as (read, write):
             async with ClientSession(read, write) as session:
-                await session.initialize()
-                tools = await session.list_tools()
+                await asyncio.wait_for(session.initialize(), timeout=self.timeout_seconds)
+                tools = await asyncio.wait_for(session.list_tools(), timeout=self.timeout_seconds)
                 if hasattr(tools, "tools"):
                     return [t.name for t in tools.tools]
                 return []
@@ -65,9 +66,9 @@ class FigmaMCPClient:
         """
         async with stdio_client(self.server_params) as (read, write):
             async with ClientSession(read, write) as session:
-                await session.initialize()
+                await asyncio.wait_for(session.initialize(), timeout=self.timeout_seconds)
 
-                tools = await session.list_tools()
+                tools = await asyncio.wait_for(session.list_tools(), timeout=self.timeout_seconds)
                 tool_names = [t.name for t in tools.tools] if hasattr(tools, "tools") else []
 
                 candidates = [
@@ -99,7 +100,10 @@ class FigmaMCPClient:
                 last_error = None
                 for payload in payload_candidates:
                     try:
-                        result = await session.call_tool(selected, payload)
+                        result = await asyncio.wait_for(
+                            session.call_tool(selected, payload),
+                            timeout=self.timeout_seconds,
+                        )
                         return self._extract_content(result)
                     except Exception as e:
                         last_error = e

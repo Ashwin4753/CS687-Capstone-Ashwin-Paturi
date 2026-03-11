@@ -1,6 +1,5 @@
 import streamlit as st
 
-
 def _risk_badge(risk: str) -> str:
     risk = str(risk).upper()
     if risk == "LOW":
@@ -11,12 +10,21 @@ def _risk_badge(risk: str) -> str:
         return "🔴 HIGH"
     return risk
 
+def _agent_badge(agent_name: str) -> str:
+    name = str(agent_name).strip().lower()
+    if name == "archaeologist":
+        return "🧭 Archaeologist Agent"
+    if name == "stylist":
+        return "🎨 Stylist Agent"
+    if name == "syncer":
+        return "🔁 Syncer Agent"
+    return f"🤖 {agent_name}"
 
 def render_agent_logs(context_store):
     """
     Dedicated review logs page.
     Formal and segmented layout for run metadata, recommendation reasoning,
-    and structured trace logs.
+    structured trace logs, and architecture context.
     """
     st.markdown("### Review Logs")
 
@@ -25,6 +33,8 @@ def render_agent_logs(context_store):
     trace_logs = memory.get("trace_logs", []) or []
     evaluation = memory.get("evaluation", {}) or {}
     reasoning_stats = evaluation.get("reasoning_stats", {}) or {}
+    pipeline_status = memory.get("pipeline_status", []) or []
+    run_timeline = memory.get("run_timeline", []) or []
 
     if not recommendations and not trace_logs:
         st.info("No reasoning or trace data available yet. Run the pipeline to generate audit evidence.")
@@ -36,8 +46,8 @@ def render_agent_logs(context_store):
     top_cols[2].metric("Run ID", memory.get("run_id", "—"))
     top_cols[3].metric("Repo", memory.get("repo", "—"))
 
-    meta_tab, rec_tab, trace_tab = st.tabs(
-        ["Run Summary", "Recommendation Reasoning", "Structured Trace Logs"]
+    meta_tab, rec_tab, trace_tab, arch_tab = st.tabs(
+        ["Run Summary", "Recommendation Reasoning", "Structured Trace Logs", "Architecture"]
     )
 
     with meta_tab:
@@ -72,8 +82,16 @@ def render_agent_logs(context_store):
                     st.markdown("**Action counts by agent**")
                     for agent, count in action_counts.items():
                         st.write(f"- **{agent}**: {count}")
-            else:
-                st.caption("No explainability summary available yet.")
+
+        if pipeline_status:
+            st.markdown("#### Pipeline Status")
+            for item in pipeline_status:
+                st.write(f"- **{item.get('stage', '')}** — {item.get('status', '')} — {item.get('details', '')}")
+
+        if run_timeline:
+            st.markdown("#### Run Timeline")
+            for item in run_timeline:
+                st.write(f"- **{item.get('stage', '')}** — {item.get('duration_s', 0)}s")
 
     with rec_tab:
         if not recommendations:
@@ -160,7 +178,7 @@ def render_agent_logs(context_store):
                             st.write(f"**Risk Reason:** {rec.get('risk_reason')}")
 
                     if rec.get("reasoning"):
-                        st.markdown("**Agent Reasoning**")
+                        st.markdown(f"**{_agent_badge('Stylist')} Reasoning**")
                         st.write(rec.get("reasoning"))
 
                     if rec.get("snippet"):
@@ -184,7 +202,7 @@ def render_agent_logs(context_store):
                 timestamp = entry.get("timestamp", "")
                 confidence = entry.get("confidence_score", "")
 
-                header = f"{agent_name} | {action} | {timestamp}"
+                header = f"{_agent_badge(agent_name)} | {action} | {timestamp}"
 
                 with st.expander(header):
                     left, right = st.columns([1, 1])
@@ -204,3 +222,20 @@ def render_agent_logs(context_store):
                             st.write(f"**Token:** `{entry.get('token')}`")
                         if timestamp:
                             st.write(f"**Timestamp:** `{timestamp}`")
+
+    with arch_tab:
+        st.markdown("#### System Architecture")
+        st.code(
+            """SynchroMesh
+├── Orchestrator
+│   ├── Archaeologist Agent
+│   ├── Stylist Agent
+│   └── Syncer Agent
+├── Governance Layer
+├── MCP Integration
+│   ├── Figma MCP
+│   └── GitHub MCP
+└── Evaluation + Reporting""",
+            language="text",
+        )
+        st.caption("This view is included to support architecture-level demo and Q&A discussion.")

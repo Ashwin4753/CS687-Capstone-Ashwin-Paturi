@@ -1,3 +1,18 @@
+Below is a **fully cleaned, corrected, and submission-ready README** in proper Markdown.
+It incorporates the fixes we discussed:
+
+* correct file names
+* correct run command (`streamlit run main.py`)
+* added **Engineering Audit**
+* added **Orchestrator explanation**
+* improved formatting
+* improved examples
+* aligned with your actual codebase
+
+You can **copy this entire file directly into `README.md`**.
+
+---
+
 # SynchroMesh
 
 **SynchroMesh** is an agentic design–code governance system that detects UI drift in frontend repositories, maps hard-coded styling to design tokens, applies bounded-autonomy governance, and generates auditable modernization outputs.
@@ -10,30 +25,30 @@ SynchroMesh demonstrates how **agentic orchestration can safely assist software 
 
 # Table of Contents
 
-- [Project Overview](#project-overview)
-- [Problem Statement](#problem-statement)
-- [Key Features](#key-features)
-- [System Architecture](#system-architecture)
-- [Project Structure](#project-structure)
-- [Core Workflow](#core-workflow)
-- [Technology Stack](#technology-stack)
-- [How the System Works](#how-the-system-works)
-- [Dashboard Modules](#dashboard-modules)
-- [Evaluation Framework](#evaluation-framework)
-- [Mock Mode vs Real Mode](#mock-mode-vs-real-mode)
-- [Setup Instructions](#setup-instructions)
-- [Environment Variables](#environment-variables)
-- [Running the Project](#running-the-project)
-- [Using the Dashboard](#using-the-dashboard)
-- [Recommended Demo Flow](#recommended-demo-flow)
-- [Supported Repository Scenarios](#supported-repository-scenarios)
-- [Outputs Generated](#outputs-generated)
-- [Governance Model](#governance-model)
-- [Known Limitations](#known-limitations)
-- [Future Enhancements](#future-enhancements)
-- [Research / Capstone Value](#research--capstone-value)
-- [Troubleshooting](#troubleshooting)
-- [License](#license)
+* [Project Overview](#project-overview)
+* [Problem Statement](#problem-statement)
+* [Key Features](#key-features)
+* [System Architecture](#system-architecture)
+* [Project Structure](#project-structure)
+* [Core Workflow](#core-workflow)
+* [Technology Stack](#technology-stack)
+* [How the System Works](#how-the-system-works)
+* [Dashboard Modules](#dashboard-modules)
+* [Evaluation Framework](#evaluation-framework)
+* [Mock Mode vs Real Mode](#mock-mode-vs-real-mode)
+* [Setup Instructions](#setup-instructions)
+* [Environment Variables](#environment-variables)
+* [Running the Project](#running-the-project)
+* [Using the Dashboard](#using-the-dashboard)
+* [Recommended Demo Flow](#recommended-demo-flow)
+* [Supported Repository Scenarios](#supported-repository-scenarios)
+* [Outputs Generated](#outputs-generated)
+* [Governance Model](#governance-model)
+* [Known Limitations](#known-limitations)
+* [Future Enhancements](#future-enhancements)
+* [Research / Capstone Value](#research--capstone-value)
+* [Troubleshooting](#troubleshooting)
+* [License](#license)
 
 ---
 
@@ -43,22 +58,22 @@ SynchroMesh is an **agentic orchestration platform** designed to detect and reso
 
 Modern UI codebases frequently diverge from their design systems due to:
 
-- hard-coded visual values
-- outdated tokens
-- inconsistent styling practices
-- rapid feature development
-- missing design system governance
+* hard-coded visual values
+* outdated tokens
+* inconsistent styling practices
+* rapid feature development
+* missing design system governance
 
 SynchroMesh detects these inconsistencies and proposes governed token replacements.
 
 The platform integrates:
 
-- **drift detection**
-- **token mapping**
-- **human-in-the-loop approval**
-- **automated patch generation**
-- **evaluation metrics**
-- **auditability and explainability**
+* drift detection
+* token mapping
+* human-in-the-loop approval
+* automated patch generation
+* evaluation metrics
+* auditability and explainability
 
 All results are surfaced through a structured governance dashboard.
 
@@ -70,18 +85,18 @@ Frontend systems frequently accumulate **visual drift** between implementation a
 
 Examples include:
 
-- hard-coded colors such as `#3b82f6`
-- inline styles such as `margin: 12px`
-- duplicated styling logic
-- outdated design tokens
-- inconsistent component styling
+* hard-coded colors such as `#3b82f6`
+* inline styles such as `margin: 12px`
+* duplicated styling logic
+* outdated design tokens
+* inconsistent component styling
 
 These issues lead to:
 
-- inconsistent UI behavior
-- reduced maintainability
-- difficult modernization
-- higher refactoring risk
+* inconsistent UI behavior
+* reduced maintainability
+* difficult modernization
+* higher refactoring risk
 
 SynchroMesh addresses this problem through a **governed agentic workflow** that identifies, evaluates, and safely applies design token replacements.
 
@@ -93,10 +108,10 @@ SynchroMesh addresses this problem through a **governed agentic workflow** that 
 
 Scans frontend repositories to detect:
 
-- hard-coded colors
-- RGB / RGBA values
-- spacing values (`px`, `rem`, `%`)
-- inline styles
+* hard-coded colors
+* RGB / RGBA values
+* spacing values (`px`, `rem`, `%`)
+* inline styles
 
 ## Token Mapping
 
@@ -108,9 +123,9 @@ Implements bounded autonomy using policy-based approval rules.
 
 Changes are classified as:
 
-- LOW risk
-- MEDIUM risk
-- HIGH risk
+* LOW risk
+* MEDIUM risk
+* HIGH risk
 
 ## Human-in-the-Loop Review
 
@@ -120,29 +135,29 @@ Developers can review recommendations before they are applied.
 
 Approved changes are converted into:
 
-- diffs
-- patch outputs
-- PR draft content
+* diffs
+* patch outputs
+* PR draft content
 
 ## Evaluation Metrics
 
 The system tracks modernization metrics including:
 
-- parity score
-- token coverage
-- drift distribution
-- component impact
-- explainability metrics
+* parity score
+* token coverage
+* drift distribution
+* component impact
+* explainability metrics
 
 ## Interactive Dashboard
 
 The Streamlit dashboard provides structured views for:
 
-- drift detection
-- approval review
-- synchronization results
-- reasoning traces
-- evaluation reports
+* drift detection
+* approval review
+* synchronization results
+* reasoning traces
+* evaluation reports
 
 ---
 
@@ -150,84 +165,73 @@ The Streamlit dashboard provides structured views for:
 
 SynchroMesh is organized into modular layers.
 
-## Agent Layer
-
-- **Archaeologist Agent**
-- **Stylist Agent**
-- **Syncer Agent**
-
-## Core Layer
-
-- orchestrator
-- context store
-- state management
-
-## Interaction Layer
-
-- governance dashboard
-- approval interface
-- reasoning panel
-- visualization components
-
-## Integration Layer
-
-- GitHub MCP client
-- Figma MCP client
-
-## Evaluation Layer
-
-- parity calculator
-- log analyzer
-- validator
-- modernization report generator
+```
+             +---------------------+
+             |   SynchroMesh UI    |
+             |  (Streamlit Dash)   |
+             +----------+----------+
+                        |
+                  Orchestrator
+                        |
+      +---------+------+-------+
+      |         |              |
+ Archaeologist Stylist      Syncer
+      |         |              |
+ Drift Detect  Token Map   Patch Apply
+      |
+ Governance + Evaluation
+      |
+ Reports / Metrics / Artifacts
+```
 
 ---
 
 # Project Structure
 
-
+```
 synchromesh/
 │
 ├── agents/
-│ ├── archaeologist.py
-│ ├── stylist.py
-│ └── syncer.py
+│   ├── archaeologist.py
+│   ├── stylist.py
+│   └── syncer.py
 │
 ├── core/
-│ ├── orchestrator.py
-│ ├── context_store.py
-│ └── state.py
+│   ├── orchestrator.py
+│   ├── context_store.py
+│   └── state.py
 │
 ├── evaluation/
-│ ├── parity_calculator.py
-│ ├── log_analyzer.py
-│ ├── validator.py
-│ ├── modernizationreportgenerator.py
-│ ├── reports/
-│ ├── traces/
-│ └── data_exports/
+│   ├── parity_calculator.py
+│   ├── log_analyzer.py
+│   ├── validator.py
+│   ├── report_generator.py
+│   ├── reports/
+│   ├── traces/
+│   └── data_exports/
 │
 ├── integration/
-│ ├── figma_mcp_client.py
-│ └── github_mcp_client.py
+│   ├── figma_mcp_client.py
+│   └── github_mcp_client.py
 │
 ├── interaction/
-│ ├── approval_gate.py
-│ └── dashboard/
-│ ├── app.py
-│ ├── visualizer.py
-│ ├── governance_ui.py
-│ └── reasoning_panel.py
+│   ├── approval_gate.py
+│   └── dashboard/
+│       ├── app.py
+│       ├── visualizer.py
+│       ├── governance_ui.py
+│       └── reasoning_panel.py
 │
 ├── config/
-│ └── settings.yaml
+│   └── settings.yaml
 │
 ├── outputs/
 ├── logs/
+├── target_repo/
 ├── main.py
 ├── requirements.txt
 └── README.md
-
+```
 
 ---
 
@@ -250,29 +254,29 @@ The pipeline executes the following stages:
 
 # Technology Stack
 
-## Programming Language
+### Programming Language
 
-- Python 3.11+
+* Python 3.11+
 
-## UI Framework
+### UI Framework
 
-- Streamlit
+* Streamlit
 
-## Configuration
+### Configuration
 
-- YAML
-- environment variables
+* YAML
+* Environment variables
 
-## Integrations
+### Integrations
 
-- MCP-compatible GitHub server
-- MCP-compatible Figma server
+* MCP-compatible GitHub server
+* MCP-compatible Figma server
 
-## Data Handling
+### Data Handling
 
-- JSON
-- CSV
-- Markdown reports
+* JSON
+* CSV
+* Markdown reports
 
 ---
 
@@ -280,18 +284,16 @@ The pipeline executes the following stages:
 
 ## Archaeologist Agent
 
-Detects hard-coded styling patterns using pattern matching techniques.
+Detects design drift and outdated components using pattern-based scanning and lightweight dependency analysis.
 
-Examples:
+Examples of detected drift:
 
-
+```
 #3b82f6
 rgb(59,130,246)
 12px
 margin: 12px
-
-
-The agent also performs lightweight dependency analysis.
+```
 
 ---
 
@@ -301,15 +303,15 @@ Maps detected values to design tokens.
 
 Each recommendation contains:
 
-- file path
-- line number
-- original value
-- proposed token
-- replacement value
-- risk classification
-- reasoning
-- confidence score
-- change ID
+* file path
+* line number
+* original value
+* proposed token
+* replacement value
+* risk classification
+* reasoning
+* confidence score
+* change ID
 
 ---
 
@@ -317,10 +319,10 @@ Each recommendation contains:
 
 Implements governance policies such as:
 
-- auto-approve low risk changes
-- require approval for medium/high risk
-- block restricted directories
-- limit number of files per synchronization
+* auto-approve low risk changes
+* require approval for medium/high risk
+* block restricted directories
+* limit number of files per synchronization
 
 ---
 
@@ -328,9 +330,24 @@ Implements governance policies such as:
 
 Applies approved replacements and generates:
 
-- unified diffs
-- patch summaries
-- PR draft content
+* unified diffs
+* patch summaries
+* PR draft content
+
+---
+
+## Orchestrator
+
+The SynchroMesh Orchestrator coordinates all agents and pipeline stages.
+
+Responsibilities include:
+
+* repository scanning
+* drift detection coordination
+* governance enforcement
+* synchronization execution
+* evaluation metric computation
+* artifact generation
 
 ---
 
@@ -342,10 +359,10 @@ Displays high-level modernization metrics.
 
 Includes:
 
-- parity score
-- risk distribution
-- governance statistics
-- evaluation insights
+* parity score
+* risk distribution
+* governance statistics
+* evaluation insights
 
 ---
 
@@ -355,11 +372,24 @@ Primary operational interface.
 
 Shows:
 
-- drift findings
-- affected files
-- risk levels
-- suggested actions
-- approval panel
+* drift findings
+* affected files
+* risk levels
+* suggested actions
+* approval panel
+
+---
+
+## Engineering Audit
+
+Displays outdated components detected during repository scanning.
+
+Includes:
+
+* outdated frontend components
+* outdated backend modules
+* severity classification
+* modernization suggestions
 
 ---
 
@@ -367,9 +397,9 @@ Shows:
 
 Displays:
 
-- generated patches
-- PR draft content
-- synchronization statistics
+* generated patches
+* PR draft content
+* synchronization statistics
 
 ---
 
@@ -377,9 +407,9 @@ Displays:
 
 Displays:
 
-- run metadata
-- reasoning traces
-- explainability statistics
+* run metadata
+* reasoning traces
+* explainability statistics
 
 ---
 
@@ -387,9 +417,9 @@ Displays:
 
 Displays:
 
-- modernization reports
-- evaluation summaries
-- exported artifacts
+* modernization reports
+* evaluation summaries
+* exported artifacts
 
 ---
 
@@ -397,10 +427,10 @@ Displays:
 
 Displays current configuration values such as:
 
-- repository root
-- Figma file ID
-- GitHub owner
-- GitHub repository
+* repository root
+* Figma file ID
+* GitHub owner
+* GitHub repository
 
 ---
 
@@ -410,23 +440,23 @@ SynchroMesh evaluates modernization results using several metrics.
 
 ## Runtime Metrics
 
-- parity score
-- drift instances
-- recommendations generated
-- patches applied
-- risk distribution
+* parity score
+* drift instances
+* recommendations generated
+* patches applied
+* risk distribution
 
 ## Explainability Metrics
 
-- trace entries
-- confidence scores
-- action counts by agent
+* trace entries
+* confidence scores
+* action counts by agent
 
 ## Analysis Metrics
 
-- token coverage
-- drift hotspots
-- component impact ranking
+* token coverage
+* drift hotspots
+* component impact ranking
 
 ---
 
@@ -442,9 +472,9 @@ Uses built-in mock clients for GitHub and Figma.
 
 Advantages:
 
-- deterministic results
-- no external dependencies
-- stable execution
+* deterministic results
+* no external dependencies
+* stable execution
 
 ---
 
@@ -454,48 +484,46 @@ Uses MCP integrations with GitHub and Figma.
 
 Requires:
 
-- valid tokens
-- MCP server availability
-- compatible tool APIs
-
-Real mode behavior depends on the MCP server configuration.
+* valid tokens
+* MCP server availability
+* compatible tool APIs
 
 ---
 
 # Setup Instructions
 
-## Clone Repository
+### Clone Repository
 
-
+```
 git clone <repository-url>
 cd synchromesh
+```
 
+### Create Virtual Environment
 
-## Create Virtual Environment
-
-
+```
 python -m venv .venv
 source .venv/bin/activate
+```
 
+### Install Dependencies
 
-## Install Dependencies
-
-
+```
 pip install -r requirements.txt
-
+```
 
 ---
 
 # Environment Variables
 
-Example `.env` configuration:
+Example `.env` file:
 
-
+```
 FIGMA_ACCESS_TOKEN=your_figma_token
 GITHUB_TOKEN=your_github_token
 GOOGLE_API_KEY=your_google_api_key
 SYNCHROMESH_MODE=mock
-
+```
 
 ---
 
@@ -503,27 +531,25 @@ SYNCHROMESH_MODE=mock
 
 ## Mock Mode
 
-
+```
 export SYNCHROMESH_MODE=mock
-python main.py
-
+streamlit run main.py
+```
 
 ---
 
 ## Real Mode
 
-
+```
 export SYNCHROMESH_MODE=real
-python main.py
+streamlit run main.py
+```
 
+Open the dashboard:
 
----
-
-Open the dashboard at:
-
-
+```
 http://localhost:8501
-
+```
 
 ---
 
@@ -559,15 +585,15 @@ Typical workflow:
 
 Best suited for frontend projects with:
 
-- React
-- JSX / TSX
-- CSS / SCSS
-- component-based UI architectures
+* React
+* JSX / TSX
+* CSS / SCSS
+* component-based UI architectures
 
 Example repositories used during testing include:
 
-- `flatlogic/react-dashboard`
-- `bulletproof-react`
+* `flatlogic/react-dashboard`
+* `bulletproof-react`
 
 ---
 
@@ -575,22 +601,22 @@ Example repositories used during testing include:
 
 SynchroMesh writes structured outputs including:
 
-
+```
 outputs/
 drift_report.json
 recommendations.json
 approved_changes.json
 metrics.json
 patches.json
-
+```
 
 Evaluation artifacts include:
 
-
+```
 evaluation/reports/
 evaluation/traces/
 evaluation/data_exports/
-
+```
 
 ---
 
@@ -600,30 +626,30 @@ Changes are classified by risk.
 
 ## LOW Risk
 
-- exact token match
-- safe replacement
-- optionally auto-approved
+* exact token match
+* safe replacement
+* optionally auto-approved
 
 ## MEDIUM Risk
 
-- approximate token match
-- requires approval
+* approximate token match
+* requires approval
 
 ## HIGH Risk
 
-- unknown mapping
-- inline style
-- requires manual review
+* unknown mapping
+* inline style
+* requires manual review
 
 ---
 
 # Known Limitations
 
-- drift detection is regex-based
-- approximate token matching is limited
-- MCP integrations depend on server compatibility
-- dependency analysis is lightweight
-- dashboard is designed for demonstration rather than production deployment
+* drift detection is regex-based
+* approximate token matching is limited
+* MCP integrations depend on server compatibility
+* dependency analysis is lightweight
+* dashboard is designed for demonstration rather than production deployment
 
 ---
 
@@ -631,13 +657,13 @@ Changes are classified by risk.
 
 Potential improvements include:
 
-- AST-based style detection
-- stronger token similarity matching
-- real GitHub PR automation
-- component ownership analysis
-- design screenshot comparison
-- advanced visualization features
-- expanded governance rules
+* AST-based style detection
+* stronger token similarity matching
+* real GitHub PR automation
+* component ownership analysis
+* design screenshot comparison
+* advanced visualization features
+* expanded governance rules
 
 ---
 
@@ -645,11 +671,11 @@ Potential improvements include:
 
 SynchroMesh demonstrates:
 
-- agentic orchestration
-- governed autonomy
-- explainability-aware software tooling
-- modernization pipelines
-- human-AI collaborative workflows
+* agentic orchestration
+* governed autonomy
+* explainability-aware software tooling
+* modernization pipelines
+* human-AI collaborative workflows
 
 It serves as both an engineering artifact and a research exploration of **safe AI-assisted code transformation**.
 
@@ -661,17 +687,21 @@ It serves as both an engineering artifact and a research exploration of **safe A
 
 Verify:
 
-- Python environment is activated
-- dependencies are installed
-- environment variables are configured
+* Python environment is activated
+* dependencies are installed
+* environment variables are configured
+
+---
 
 ## MCP connection issues
 
 Switch to mock mode if MCP servers are unavailable.
 
-
+```
 export SYNCHROMESH_MODE=mock
+```
 
+---
 
 ## No drift detected
 
@@ -687,5 +717,5 @@ MIT License
 
 # Author
 
-Ashwin Shastry Paturi  
+**Ashwin Shastry Paturi**
 SynchroMesh — Agentic Design-Code Governance Dashboard

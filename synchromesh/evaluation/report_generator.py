@@ -36,10 +36,13 @@ class ModernizationReportGenerator:
 
         drift_heatmap = evaluation.get("drift_heatmap", []) or []
         token_coverage = evaluation.get("token_coverage", {}) or {}
-        component_impact = evaluation.get("component_impact", []) or {}
+        component_impact = evaluation.get("component_impact", []) or []
         formal_parity = evaluation.get("formal_parity", {}) or {}
         reasoning_stats = evaluation.get("reasoning_stats", {}) or {}
         ground_truth_validation = evaluation.get("ground_truth_validation")
+        outdated_components = evaluation.get("outdated_components", []) or []
+        pipeline_status = evaluation.get("pipeline_status", []) or []
+        run_timeline = evaluation.get("run_timeline", []) or []
 
         sync_summary = sync_result.get("summary", {}) if sync_result else {}
         pr_payload = sync_result.get("pull_request", {}) if sync_result else {}
@@ -58,6 +61,7 @@ class ModernizationReportGenerator:
         lines.append("")
         lines.append(f"- Total drift findings: **{len(findings)}**")
         lines.append(f"- Total recommendations: **{len(recommendations)}**")
+        lines.append(f"- Outdated components/modules detected: **{len(outdated_components)}**")
         lines.append(f"- Runtime parity score: **{metrics.get('parity_score', 0)}%**")
         lines.append(f"- Formal parity score: **{formal_parity.get('parity_score', 0)}%**")
         lines.append(f"- Applied patches: **{metrics.get('patches_applied', 0)}**")
@@ -81,7 +85,27 @@ class ModernizationReportGenerator:
         lines.append(f"- UNKNOWN: **{risk_counts.get('UNKNOWN', 0)}**")
         lines.append("")
 
-        lines.append("## 3. Design Token Coverage")
+        lines.append("## 3. Engineering Modernization Audit")
+        lines.append("")
+        lines.append(f"- Total outdated findings: **{len(outdated_components)}**")
+        lines.append(f"- Outdated frontend findings: **{metrics.get('outdated_frontend_count', 0)}**")
+        lines.append(f"- Outdated backend findings: **{metrics.get('outdated_backend_count', 0)}**")
+        lines.append("")
+        if outdated_components:
+            lines.append("| Type | File Path | Severity | Reason |")
+            lines.append("|---|---|---|---|")
+            for item in outdated_components[:20]:
+                lines.append(
+                    f"| `{item.get('type', '')}` | "
+                    f"`{item.get('file_path', '')}` | "
+                    f"{item.get('severity', '')} | "
+                    f"{item.get('reason', '')} |"
+                )
+        else:
+            lines.append("No outdated components or backend modules detected.")
+        lines.append("")
+
+        lines.append("## 4. Design Token Coverage")
         lines.append("")
         lines.append(f"- Total available tokens: **{token_coverage.get('total_tokens_available', 0)}**")
         lines.append(f"- Tokens used in recommendations: **{token_coverage.get('tokens_used_in_recommendations', 0)}**")
@@ -94,7 +118,7 @@ class ModernizationReportGenerator:
                 lines.append(f"- `{token}`")
         lines.append("")
 
-        lines.append("## 4. Drift Heatmap")
+        lines.append("## 5. Drift Heatmap")
         lines.append("")
         if drift_heatmap:
             lines.append("| File Path | Drift Count |")
@@ -105,7 +129,7 @@ class ModernizationReportGenerator:
             lines.append("No drift heatmap data available.")
         lines.append("")
 
-        lines.append("## 5. Component Impact Analysis")
+        lines.append("## 6. Component Impact Analysis")
         lines.append("")
         if component_impact:
             lines.append("| File Path | Drift Count | Import Count | Impact Score |")
@@ -121,7 +145,7 @@ class ModernizationReportGenerator:
             lines.append("No component impact data available.")
         lines.append("")
 
-        lines.append("## 6. Explainability Metrics")
+        lines.append("## 7. Explainability Metrics")
         lines.append("")
         lines.append(f"- Trace entries total: **{reasoning_stats.get('entries_total', 0)}**")
         lines.append(f"- Entries with confidence: **{reasoning_stats.get('entries_with_confidence', 0)}**")
@@ -134,7 +158,7 @@ class ModernizationReportGenerator:
                 lines.append(f"- **{agent}**: {score}")
         lines.append("")
 
-        lines.append("## 7. Formal Parity Metrics")
+        lines.append("## 8. Formal Parity Metrics")
         lines.append("")
         lines.append(f"- Total components/files evaluated: **{formal_parity.get('total_components', 0)}**")
         lines.append(f"- Aligned components/files: **{formal_parity.get('aligned_components', 0)}**")
@@ -143,7 +167,7 @@ class ModernizationReportGenerator:
         lines.append("")
 
         if ground_truth_validation:
-            lines.append("## 8. Ground Truth Validation")
+            lines.append("## 9. Ground Truth Validation")
             lines.append("")
             lines.append(f"- Accuracy: **{ground_truth_validation.get('accuracy', 0)}%**")
             lines.append(f"- Precision: **{ground_truth_validation.get('precision', 0)}%**")
@@ -151,7 +175,31 @@ class ModernizationReportGenerator:
             lines.append(f"- F1 Score: **{ground_truth_validation.get('f1_score', 0)}%**")
             lines.append("")
 
-        lines.append("## 9. Synchronization Results")
+        lines.append("## 10. Pipeline Execution Summary")
+        lines.append("")
+        if pipeline_status:
+            lines.append("| Stage | Status | Details |")
+            lines.append("|---|---|---|")
+            for item in pipeline_status:
+                lines.append(
+                    f"| {item.get('stage', '')} | {item.get('status', '')} | {item.get('details', '')} |"
+                )
+        else:
+            lines.append("No pipeline status data available.")
+        lines.append("")
+
+        if run_timeline:
+            lines.append("### Run Timeline")
+            lines.append("")
+            lines.append("| Stage | Duration (s) |")
+            lines.append("|---|---:|")
+            for item in run_timeline:
+                lines.append(
+                    f"| {item.get('stage', '')} | {item.get('duration_s', 0)} |"
+                )
+            lines.append("")
+
+        lines.append("## 11. Synchronization Results")
         lines.append("")
         if sync_result:
             lines.append(f"- Applied substitutions: **{sync_summary.get('applied', 0)}**")
@@ -171,7 +219,7 @@ class ModernizationReportGenerator:
             lines.append("Synchronization has not been executed yet (awaiting approval or dry run).")
             lines.append("")
 
-        lines.append("## 10. Recommendation Sample")
+        lines.append("## 12. Recommendation Sample")
         lines.append("")
         if recommendations:
             lines.append("| File | Line | Risk | Original | Proposed Token |")

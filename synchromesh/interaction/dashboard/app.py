@@ -14,37 +14,27 @@ st.set_page_config(
     layout="wide",
 )
 
-
 def _inject_theme():
     st.markdown(
         """
         <style>
-        .stApp {
-            background: #eef2f7;
-        }
-
+        .stApp { background: #eef2f7; }
         section[data-testid="stSidebar"] {
             background: linear-gradient(180deg, #08152f 0%, #0b1a3d 100%);
             border-right: 1px solid rgba(255,255,255,0.05);
         }
-
-        section[data-testid="stSidebar"] * {
-            color: #f3f6fb !important;
-        }
-
+        section[data-testid="stSidebar"] * { color: #f3f6fb !important; }
         section[data-testid="stSidebar"] .stTextInput label,
         section[data-testid="stSidebar"] .stSelectbox label,
         section[data-testid="stSidebar"] .stRadio label {
             color: #d6deeb !important;
             font-weight: 600;
         }
-
         .block-container {
             padding-top: 1.8rem;
             padding-bottom: 2rem;
             max-width: 1380px;
         }
-
         .syn-page-title {
             font-size: 2.25rem;
             font-weight: 800;
@@ -52,13 +42,11 @@ def _inject_theme():
             margin-bottom: 0.2rem;
             line-height: 1.1;
         }
-
         .syn-page-subtitle {
             color: #6f7b8d;
             font-size: 1rem;
             margin-bottom: 1.15rem;
         }
-
         .syn-top-strip {
             background: #ffffff;
             border: 1px solid #d8e0ea;
@@ -67,7 +55,6 @@ def _inject_theme():
             margin-bottom: 1rem;
             box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03);
         }
-
         .syn-chip {
             display: inline-block;
             padding: 0.42rem 0.9rem;
@@ -80,7 +67,6 @@ def _inject_theme():
             margin-right: 0.55rem;
             margin-bottom: 0.2rem;
         }
-
         .syn-card {
             background: #ffffff;
             border: 1px solid #d9e2ec;
@@ -89,20 +75,17 @@ def _inject_theme():
             box-shadow: 0 3px 12px rgba(15, 23, 42, 0.04);
             margin-bottom: 1rem;
         }
-
         .syn-card-title {
             color: #1d2c45;
             font-size: 1.1rem;
             font-weight: 800;
             margin-bottom: 0.15rem;
         }
-
         .syn-card-subtitle {
             color: #728094;
             font-size: 0.93rem;
             margin-bottom: 0.7rem;
         }
-
         .syn-soft-note {
             background: #f7fafc;
             border: 1px dashed #cad5e3;
@@ -111,11 +94,7 @@ def _inject_theme():
             color: #586579;
             font-size: 0.93rem;
         }
-
-        .syn-section-gap {
-            margin-top: 0.4rem;
-        }
-
+        .syn-section-gap { margin-top: 0.4rem; }
         .syn-risk-pill {
             display: inline-block;
             padding: 0.22rem 0.62rem;
@@ -124,25 +103,21 @@ def _inject_theme():
             font-weight: 800;
             border: 1px solid transparent;
         }
-
         .syn-risk-low {
             background: #dff5e5;
             color: #247147;
             border-color: #c8ebd4;
         }
-
         .syn-risk-medium {
             background: #fff0c8;
             color: #9a6a00;
             border-color: #ffe3a0;
         }
-
         .syn-risk-high {
             background: #fde0e0;
             color: #a23535;
             border-color: #f7c8c8;
         }
-
         .syn-table-head {
             color: #64748b;
             font-size: 0.8rem;
@@ -151,23 +126,19 @@ def _inject_theme():
             letter-spacing: 0.02em;
             margin-bottom: 0.35rem;
         }
-
         .syn-table-row {
             padding: 0.58rem 0.15rem;
             border-top: 1px solid #edf2f7;
         }
-
         .syn-table-value {
             color: #243247;
             font-size: 0.92rem;
             font-weight: 600;
         }
-
         .syn-table-muted {
             color: #5f6f84;
             font-size: 0.9rem;
         }
-
         div[data-testid="stMetric"] {
             background: #ffffff;
             border: 1px solid #d9e2ec;
@@ -175,42 +146,29 @@ def _inject_theme():
             padding: 0.7rem 0.7rem 0.55rem 0.7rem;
             box-shadow: 0 3px 10px rgba(15, 23, 42, 0.03);
         }
-
         .stButton > button {
             border-radius: 10px;
             font-weight: 700;
             min-height: 2.75rem;
             border: 1px solid #cdd7e3;
         }
-
-        .stTabs [data-baseweb="tab-list"] {
-            gap: 6px;
-        }
-
+        .stTabs [data-baseweb="tab-list"] { gap: 6px; }
         .stTabs [data-baseweb="tab"] {
             border-radius: 10px;
             padding: 0.42rem 0.82rem;
             background: #f6f8fb;
         }
-
         .stTabs [aria-selected="true"] {
             background: #ffffff !important;
             color: #1f3f73 !important;
             border: 1px solid #d9e2ec !important;
         }
-
-        .stRadio > div {
-            gap: 0.2rem;
-        }
-
-        code {
-            white-space: pre-wrap !important;
-        }
+        .stRadio > div { gap: 0.2rem; }
+        code { white-space: pre-wrap !important; }
         </style>
         """,
         unsafe_allow_html=True,
     )
-
 
 def _run_async(coro):
     try:
@@ -223,10 +181,6 @@ def _run_async(coro):
             asyncio.set_event_loop(loop)
         return loop.run_until_complete(coro)
 
-
-# -----------------------------
-# Mock clients for stable demo
-# -----------------------------
 class MockFigmaClient:
     async def get_tokens(self, figma_file_id: str):
         return {
@@ -235,8 +189,9 @@ class MockFigmaClient:
             "spacing.2": "8px",
             "spacing.3": "12px",
             "border.radius.md": "8px",
+            "color.text.body": "#1f2937",
+            "spacing.4": "16px",
         }
-
 
 class MockGitHubClient:
     def set_repo(self, owner: str, repo: str):
@@ -248,6 +203,7 @@ class MockGitHubClient:
             "src/components/Button.tsx",
             "src/components/Card.tsx",
             "src/components/Navbar.tsx",
+            "backend/services/auth_service.py",
         ]
 
     async def read_file(self, path: str):
@@ -255,11 +211,14 @@ class MockGitHubClient:
             return "const primaryBtn = { color: '#3b82f6', margin: '12px' };"
         if "Card" in path:
             return "const card = { borderRadius: '8px', padding: '12px' };"
-        return "const nav = { color: 'rgb(59,130,246)' };"
+        if "Navbar" in path:
+            return "const nav = <div style={{ color: 'rgb(59,130,246)' }}>Menu</div>;"
+        if "auth_service.py" in path:
+            return "def auth():\n    print('debug')\n    # TODO: replace legacy token validation\n    return True"
+        return ""
 
     async def write_file(self, path: str, content: str):
         return
-
 
 def _make_clients(mode: str, owner: str, repo: str):
     if mode == "real":
@@ -272,7 +231,6 @@ def _make_clients(mode: str, owner: str, repo: str):
     github.set_repo(owner, repo)
     figma = MockFigmaClient()
     return github, figma
-
 
 def _build_approved_changes(approved_ids: set, recommendations: list[dict]) -> list[dict]:
     approved_changes = []
@@ -290,7 +248,6 @@ def _build_approved_changes(approved_ids: set, recommendations: list[dict]) -> l
 
     return approved_changes
 
-
 def _risk_badge(risk: str) -> str:
     risk = str(risk).upper()
     if risk == "LOW":
@@ -300,7 +257,6 @@ def _risk_badge(risk: str) -> str:
     if risk == "HIGH":
         return '<span class="syn-risk-pill syn-risk-high">HIGH</span>'
     return f'<span class="syn-risk-pill">{risk}</span>'
-
 
 def _build_review_rows(recommendations: list[dict]) -> list[dict]:
     rows = []
@@ -321,7 +277,6 @@ def _build_review_rows(recommendations: list[dict]) -> list[dict]:
         )
     return rows
 
-
 def _render_sidebar(orchestrator: SynchroMeshOrchestrator, mode: str):
     st.sidebar.markdown("## SynchroMesh")
     st.sidebar.caption("Agentic Governance Dashboard")
@@ -331,6 +286,7 @@ def _render_sidebar(orchestrator: SynchroMeshOrchestrator, mode: str):
         [
             "Dashboard",
             "Detected Drift",
+            "Engineering Audit",
             "Sync Workflow",
             "Review Logs",
             "Documentation",
@@ -361,11 +317,11 @@ def _render_sidebar(orchestrator: SynchroMeshOrchestrator, mode: str):
 
     return page, repo_root, figma_file_id, owner, repo
 
-
 def _render_page_header(orchestrator: SynchroMeshOrchestrator, mode: str, owner: str, repo: str):
     st.markdown('<div class="syn-page-title">SynchroMesh</div>', unsafe_allow_html=True)
     st.markdown('<div class="syn-page-subtitle">Governance Dashboard</div>', unsafe_allow_html=True)
 
+    safety = "Bounded Autonomy"
     st.markdown(
         f"""
         <div class="syn-top-strip">
@@ -373,21 +329,33 @@ def _render_page_header(orchestrator: SynchroMeshOrchestrator, mode: str, owner:
             <span class="syn-chip">Owner: {owner}</span>
             <span class="syn-chip">Repo: {repo}</span>
             <span class="syn-chip">Run ID: {orchestrator.context.shared_memory.get("run_id", "")}</span>
+            <span class="syn-chip">Safety: {safety}</span>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
+def _show_run_result_status(result: dict):
+    status = str(result.get("status", "")).upper()
+
+    if status == "COMPLETED":
+        st.success("Pipeline completed successfully.")
+    elif status == "AWAITING_APPROVAL":
+        st.warning("Pipeline completed, but some MEDIUM/HIGH-risk items still require approval.")
+    elif status == "PARTIAL_COMPLETED_AWAITING_APPROVAL":
+        st.warning("Approved LOW-risk changes were applied, but some MEDIUM/HIGH-risk items still require approval.")
+    else:
+        st.info(f"Pipeline finished with status: {result.get('status')}")
 
 def _render_run_controls(orchestrator, github_client, figma_client, repo_root, figma_file_id):
     st.markdown('<div class="syn-card">', unsafe_allow_html=True)
     st.markdown('<div class="syn-card-title">Run Controls</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="syn-card-subtitle">Launch a new analysis run or re-run with the currently selected approvals.</div>',
+        '<div class="syn-card-subtitle">Launch a new analysis run, one-click demo scenario, or re-run with the currently selected approvals.</div>',
         unsafe_allow_html=True,
     )
 
-    action_col1, action_col2 = st.columns([1, 1])
+    action_col1, action_col2, action_col3 = st.columns([1, 1, 1])
 
     with action_col1:
         if st.button("🚀 Start Pipeline", use_container_width=True):
@@ -405,11 +373,27 @@ def _render_run_controls(orchestrator, github_client, figma_client, repo_root, f
                 )
                 st.session_state["last_result"] = result
 
-            st.success(f"Pipeline finished with status: {result.get('status')}")
-            if result.get("status") == "AWAITING_APPROVAL":
-                st.warning("Approval is required for MEDIUM/HIGH items. Review the queue below.")
+            _show_run_result_status(result)
 
     with action_col2:
+        if st.button("🎬 Run Demo Scenario", use_container_width=True):
+            st.session_state["approved_change_ids"] = set()
+
+            with st.spinner("Running curated demo scenario..."):
+                result = _run_async(
+                    orchestrator.run_sync_pipeline(
+                        repo_root=repo_root,
+                        figma_file_id=figma_file_id,
+                        github_mcp_client=github_client,
+                        figma_mcp_client=figma_client,
+                        approved_changes=None,
+                    )
+                )
+                st.session_state["last_result"] = result
+
+            _show_run_result_status(result)
+
+    with action_col3:
         if st.button("✅ Apply Approved Changes (Re-run)", use_container_width=True):
             recs = orchestrator.context.shared_memory.get("recommendations", []) or []
             approved_ids = st.session_state.get("approved_change_ids", set())
@@ -428,16 +412,15 @@ def _render_run_controls(orchestrator, github_client, figma_client, repo_root, f
                 )
                 st.session_state["last_result"] = result
 
-            st.success(f"Re-run finished with status: {result.get('status')}")
+            _show_run_result_status(result)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-
 def _render_detected_drift_table(recommendations: list[dict]):
     st.markdown('<div class="syn-card">', unsafe_allow_html=True)
-    st.markdown('<div class="syn-card-title">Detected Design Tokens</div>', unsafe_allow_html=True)
+    st.markdown('<div class="syn-card-title">Governed Drift Recommendations</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="syn-card-subtitle">Review drift findings and select the governed changes you want to carry into the next run.</div>',
+        '<div class="syn-card-subtitle">Review synchronization recommendations and select the governed changes you want to carry into the next run.</div>',
         unsafe_allow_html=True,
     )
 
@@ -492,6 +475,64 @@ def _render_detected_drift_table(recommendations: list[dict]):
     st.caption(f"Showing {len(visible_rows)} of {len(rows)} recommendation(s).")
     st.markdown("</div>", unsafe_allow_html=True)
 
+def _render_engineering_audit_page(context_store):
+    findings = context_store.shared_memory.get("outdated_components", []) or []
+
+    st.markdown('<div class="syn-card">', unsafe_allow_html=True)
+    st.markdown('<div class="syn-card-title">Engineering Modernization Audit</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="syn-card-subtitle">Review outdated frontend components and backend modules detected during the latest run.</div>',
+        unsafe_allow_html=True,
+    )
+
+    if not findings:
+        st.info("No engineering audit findings available yet. Run the pipeline to populate this view.")
+        st.markdown("</div>", unsafe_allow_html=True)
+        return
+
+    frontend = [
+        item for item in findings
+        if str(item.get("type", "")).upper() == "OUTDATED_FRONTEND_COMPONENT"
+    ]
+    backend = [
+        item for item in findings
+        if str(item.get("type", "")).upper() == "OUTDATED_BACKEND_MODULE"
+    ]
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Findings", len(findings))
+    c2.metric("Frontend", len(frontend))
+    c3.metric("Backend", len(backend))
+
+    tabs = st.tabs(["All Findings", "Frontend", "Backend"])
+
+    def render_findings(items: list[dict]):
+        if not items:
+            st.info("No findings in this category.")
+            return
+        for item in items[:100]:
+            title = (
+                f"{item.get('type', '')} | "
+                f"{item.get('file_path', '')}"
+                + (f":{item.get('line')}" if item.get("line") not in (None, "") else "")
+            )
+            with st.expander(title):
+                st.write(f"**Severity:** {item.get('severity', '')}")
+                st.write(f"**Reason:** {item.get('reason', '')}")
+                if item.get("confidence_score") is not None:
+                    st.write(f"**Confidence:** {item.get('confidence_score')}")
+                if item.get("snippet"):
+                    st.markdown("**Snippet**")
+                    st.code(item.get("snippet", ""))
+
+    with tabs[0]:
+        render_findings(findings)
+    with tabs[1]:
+        render_findings(frontend)
+    with tabs[2]:
+        render_findings(backend)
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 def _render_approval_controls(context_store):
     st.markdown('<div class="syn-card">', unsafe_allow_html=True)
@@ -519,13 +560,14 @@ def _render_approval_controls(context_store):
             st.caption(sample.get("reasoning"))
     else:
         st.markdown(
-            '<div class="syn-soft-note">Select one or more rows from the detected drift table to review them here.</div>',
+            '<div class="syn-soft-note">Select one or more rows from the governed drift recommendations table to review them here.</div>',
             unsafe_allow_html=True,
         )
 
     st.markdown("##### Notes")
-    st.caption("• LOW-risk changes can proceed automatically when policy allows.")
-    st.caption("• MEDIUM/HIGH-risk changes should be reviewed before rerun.")
+    st.caption("• Selections here only record governance intent.")
+    st.caption("• Actual file changes occur only when you use 'Apply Approved Changes (Re-run)'.")
+    st.caption("• MEDIUM/HIGH-risk changes remain governed even if selected.")
     if comment.strip():
         st.info(f"Approval note captured: {comment.strip()}")
 
@@ -536,7 +578,6 @@ def _render_approval_controls(context_store):
     st.caption("Selections are applied when you use the re-run control.")
     st.markdown("</div>", unsafe_allow_html=True)
 
-
 def _render_sync_workflow_page(last_result: dict, context_store):
     sync_result = last_result.get("sync_result", {}) if isinstance(last_result, dict) else {}
     if not isinstance(sync_result, dict):
@@ -545,14 +586,29 @@ def _render_sync_workflow_page(last_result: dict, context_store):
     st.markdown('<div class="syn-card">', unsafe_allow_html=True)
     st.markdown('<div class="syn-card-title">Sync Workflow</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="syn-card-subtitle">Review patch output, PR draft content, and synchronization artifacts generated by the latest run.</div>',
+        '<div class="syn-card-subtitle">Review patch output, PR draft content, before/after changes, and synchronization artifacts generated by the latest run.</div>',
         unsafe_allow_html=True,
     )
     st.markdown("</div>", unsafe_allow_html=True)
 
-    tabs = st.tabs(["Patches", "PR Draft", "Workflow Summary"])
+    tabs = st.tabs(["Before / After", "Patches", "PR Draft", "Workflow Summary"])
 
     with tabs[0]:
+        applied_recommendations = sync_result.get("applied_recommendations", []) if isinstance(sync_result, dict) else []
+        if applied_recommendations:
+            for rec in applied_recommendations[:10]:
+                with st.expander(f"{rec.get('file_path', '')}:{rec.get('line', '')}"):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown("**Before**")
+                        st.code(str(rec.get("original_value", "")))
+                    with col2:
+                        st.markdown("**After**")
+                        st.code(str(rec.get("replacement_text", "")))
+        else:
+            st.info("No before/after changes available yet.")
+
+    with tabs[1]:
         patches = sync_result.get("patches", [])
         if isinstance(patches, list) and patches:
             for patch in patches:
@@ -566,15 +622,21 @@ def _render_sync_workflow_page(last_result: dict, context_store):
         else:
             st.info("No patches available for this run.")
 
-    with tabs[1]:
+    with tabs[2]:
         pr = sync_result.get("pull_request")
-        if isinstance(pr, dict):
+        if isinstance(pr, dict) and pr:
+            st.markdown("#### Pull Request Highlight")
             st.write(f"**Title:** {pr.get('title')}")
             st.text_area("Body", pr.get("body", ""), height=260, key="sync_pr_body")
+            changes = pr.get("changes", []) or []
+            if changes:
+                st.write("**Files in PR draft:**")
+                for item in changes:
+                    st.write(f"- `{item.get('file_path', '')}`")
         else:
             st.info("No PR draft available yet.")
 
-    with tabs[2]:
+    with tabs[3]:
         summary = sync_result.get("summary", {}) if isinstance(sync_result, dict) else {}
         if summary:
             c1, c2, c3 = st.columns(3)
@@ -584,7 +646,6 @@ def _render_sync_workflow_page(last_result: dict, context_store):
         else:
             st.info("No sync workflow summary available yet.")
 
-
 def _render_documentation_page(last_result: dict, context_store):
     evaluation = last_result.get("evaluation", {}) if isinstance(last_result, dict) else {}
     if not isinstance(evaluation, dict):
@@ -593,7 +654,7 @@ def _render_documentation_page(last_result: dict, context_store):
     st.markdown('<div class="syn-card">', unsafe_allow_html=True)
     st.markdown('<div class="syn-card-title">Documentation</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="syn-card-subtitle">Generated reports, evaluation snapshots, and export references from the latest run.</div>',
+        '<div class="syn-card-subtitle">Generated reports, evaluation snapshots, architecture view, and export references from the latest run.</div>',
         unsafe_allow_html=True,
     )
 
@@ -618,8 +679,20 @@ def _render_documentation_page(last_result: dict, context_store):
         c2.metric("Token Coverage", f"{token_coverage.get('coverage_score', 0)}%")
         c3.metric("Trace Entries", reasoning_stats.get("entries_total", 0))
 
-    st.markdown("</div>", unsafe_allow_html=True)
+    with st.expander("Architecture View", expanded=False):
+        st.code(
+            """SynchroMesh
+├── Orchestrator
+├── Archaeologist Agent
+├── Stylist Agent
+├── Syncer Agent
+├── Governance Layer
+├── MCP Integration (Figma / GitHub)
+└── Evaluation + Reporting""",
+            language="text",
+        )
 
+    st.markdown("</div>", unsafe_allow_html=True)
 
 def _render_settings_page(repo_root: str, figma_file_id: str, owner: str, repo: str, mode: str):
     st.markdown('<div class="syn-card">', unsafe_allow_html=True)
@@ -643,7 +716,6 @@ def _render_settings_page(repo_root: str, figma_file_id: str, owner: str, repo: 
         unsafe_allow_html=True,
     )
     st.markdown("</div>", unsafe_allow_html=True)
-
 
 def main():
     _inject_theme()
@@ -686,6 +758,9 @@ def main():
         with right_col:
             _render_approval_controls(orchestrator.context)
 
+    elif page == "Engineering Audit":
+        _render_engineering_audit_page(orchestrator.context)
+
     elif page == "Sync Workflow":
         _render_sync_workflow_page(last_result, orchestrator.context)
 
@@ -702,7 +777,6 @@ def main():
 
     if page in {"Dashboard", "Detected Drift"}:
         render_approval_queue(orchestrator.context, settings=orchestrator.config)
-
 
 if __name__ == "__main__":
     main()

@@ -78,20 +78,18 @@ class ApprovalGate:
         too_many_files = len(touched_files) > self.max_files_per_sync
 
         for rec in recommendations:
-            item = dict(rec)  # do not mutate caller-owned object
+            item = dict(rec)
             item["change_id"] = item.get("change_id") or _make_change_id(item)
 
             file_path = str(item.get("file_path", ""))
             risk = str(item.get("risk_level", "HIGH")).upper()
 
-            # 1) Restricted directories are blocked outright
             if self._is_restricted(file_path):
                 item["approved"] = False
                 item["gate_reason"] = "Blocked: restricted directory (governance policy)."
                 categorized["blocked"].append(item)
                 continue
 
-            # 2) Large runs require human approval regardless of LOW/MEDIUM/HIGH
             if too_many_files:
                 item["approved"] = False
                 item["gate_reason"] = (
@@ -101,14 +99,12 @@ class ApprovalGate:
                 categorized["approval_required"].append(item)
                 continue
 
-            # 3) Explicit approval policy by risk
             if risk in self.require_approval_for:
                 item["approved"] = False
                 item["gate_reason"] = f"Approval required by policy for risk_level={risk}."
                 categorized["approval_required"].append(item)
                 continue
 
-            # 4) LOW risk
             if risk == "LOW":
                 item["approved"] = self.auto_approve_low_risk
                 item["gate_reason"] = (
@@ -123,7 +119,6 @@ class ApprovalGate:
                     categorized["approval_required"].append(item)
                 continue
 
-            # 5) Unknown risk values -> safe default
             item["approved"] = False
             item["gate_reason"] = (
                 f"Unrecognized risk_level='{risk}', defaulting to approval required."

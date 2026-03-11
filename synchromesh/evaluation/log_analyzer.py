@@ -3,7 +3,6 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List
 
-
 class LogAnalyzer:
     """
     Analyzes structured agent reasoning traces for runtime explainability
@@ -31,16 +30,20 @@ class LogAnalyzer:
         - total trace coverage
         - average confidence by agent
         - action counts by agent
+        - action counts overall
         """
         agent_confidence: Dict[str, List[float]] = {}
         action_counts_by_agent: Dict[str, int] = {}
+        action_type_counts: Dict[str, int] = {}
         missing_confidence = 0
 
         for entry in trace_logs:
-            agent = str(entry.get("agent_name", "unknown"))
+            agent = str(entry.get("agent_name", "unknown")).strip().lower()
+            action = str(entry.get("action_taken", "unknown")).strip().lower()
             confidence = entry.get("confidence_score")
 
             action_counts_by_agent[agent] = action_counts_by_agent.get(agent, 0) + 1
+            action_type_counts[action] = action_type_counts.get(action, 0) + 1
 
             if isinstance(confidence, (int, float)):
                 agent_confidence.setdefault(agent, []).append(float(confidence))
@@ -58,6 +61,7 @@ class LogAnalyzer:
             "entries_missing_confidence": missing_confidence,
             "average_confidence_by_agent": average_confidence_by_agent,
             "action_counts_by_agent": action_counts_by_agent,
+            "action_type_counts": action_type_counts,
         }
 
     def export_for_thesis(self, trace_logs: List[Dict[str, Any]]) -> str:

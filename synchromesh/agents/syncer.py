@@ -7,7 +7,6 @@ try:
 except Exception:
     Agent = None
 
-
 @dataclass
 class PatchResult:
     file_path: str
@@ -16,7 +15,6 @@ class PatchResult:
     applied_count: int
     skipped_count: int
     notes: List[str]
-
 
 class SyncerAgent:
     """
@@ -34,8 +32,6 @@ class SyncerAgent:
     """
 
     def __init__(self) -> None:
-        # For demo/runtime stability we do not instantiate ADK directly here,
-        # since constructor APIs vary across versions.
         self.agent = None
 
     def _adk_call(self, prompt: str, context: Optional[Dict[str, Any]] = None) -> str:
@@ -85,20 +81,6 @@ class SyncerAgent:
     ) -> Dict[str, Any]:
         """
         Applies approved LOW-risk recommendations.
-
-        Returns:
-        - summary
-        - patches
-        - skipped
-        - pull_request (draft payload)
-
-        Expected recommendation fields:
-        - file_path
-        - span_start
-        - span_end
-        - replacement_text
-        - risk_level
-        - original_value
         """
         eligible: List[Dict[str, Any]] = []
         skipped: List[Tuple[Dict[str, Any], str]] = []
@@ -195,7 +177,10 @@ class SyncerAgent:
             "title": pr_title,
             "body": pr_body,
             "changes": [
-                {"file_path": patch.file_path, "diff": patch.diff}
+                {
+                    "file_path": patch.file_path,
+                    "diff": patch.diff[:5000],
+                }
                 for patch in patch_results
                 if patch.changed
             ],

@@ -7,7 +7,6 @@ try:
 except Exception:
     Agent = None
 
-
 @dataclass
 class GhostStyleFinding:
     kind: str  # COLOR_HEX | COLOR_RGB | SIZE | INLINE_STYLE
@@ -17,6 +16,15 @@ class GhostStyleFinding:
     span_end: int
     snippet: str
 
+@dataclass
+class OutdatedComponentFinding:
+    type: str  # OUTDATED_FRONTEND_COMPONENT | OUTDATED_BACKEND_MODULE
+    file_path: str
+    reason: str
+    severity: str  # LOW | MEDIUM | HIGH
+    confidence_score: float
+    line: Optional[int] = None
+    snippet: str = ""
 
 class ArchaeologistAgent:
     """
@@ -25,6 +33,7 @@ class ArchaeologistAgent:
     Responsibilities:
     - Scan code content for hard-coded visual values ("ghost styles")
     - Surface lightweight dependency/coupling signals from import usage
+    - Detect outdated frontend components and backend modules
     - Provide explainability summaries with a stable local fallback
 
     Notes:
@@ -39,9 +48,20 @@ class ArchaeologistAgent:
     _SIZE_PATTERN = re.compile(r"\b(\d+(?:\.\d+)?)(px|rem|em|%)\b")
     _INLINE_STYLE_PATTERN = re.compile(r"\bstyle\s*=\s*\{\{.*?\}\}", re.DOTALL)
 
+    _TODO_PATTERN = re.compile(r"\bTODO\b", re.IGNORECASE)
+    _FIXME_PATTERN = re.compile(r"\bFIXME\b", re.IGNORECASE)
+    _DEBUG_PRINT_PATTERN = re.compile(r"\bprint\s*\(")
+    _CONSOLE_LOG_PATTERN = re.compile(r"\bconsole\.log\s*\(")
+    _INLINE_STYLE_JSX_PATTERN = re.compile(r"\bstyle\s*=\s*\{\{.*?\}\}", re.DOTALL)
+    _DEPRECATED_IMPORT_PATTERN = re.compile(
+        r"""(?:
+            import\s+(?:[\w*\s{},]+\s+from\s+)?["']([^"']+)["'] |
+            require\(\s*["']([^"']+)["']\s*\)
+        )""",
+        re.VERBOSE,
+    )
+
     def __init__(self) -> None:
-        # For demo/runtime stability we do not instantiate ADK directly here,
-        # since constructor APIs vary across versions.
         self.agent = None
 
     def _adk_call(self, prompt: str, context: Optional[Dict[str, Any]] = None) -> str:
@@ -54,9 +74,7 @@ class ArchaeologistAgent:
         top_imports = context.get("top_imports", []) or []
 
         if top_imports:
-            preview = ", ".join(
-                [f"{name} ({count})" for name, count in top_imports[:3]]
-            )
+            preview = ", ".join([f"{name} ({count})" for name, count in top_imports[:3]])
             return (
                 f"Dependency analysis completed across {file_count} files "
                 f"({js_ts_file_count} JS/TS files). The most frequently referenced imports are "
@@ -179,6 +197,182 @@ class ArchaeologistAgent:
             "top_imports": top_imports,
             "analysis_summary": summary,
         }
+
+    async def detect_outdated_components(
+        self,
+        github_mcp_client: Any,
+        repo_root: str = "",
+    ) -> List[Dict[str, Any]]:
+        """
+        Detects outdated frontend components and backend modules using heuristic rules.
+
+        Frontend examples:
+        - inline style usage
+        - hardcoded color values
+        - console.log in UI code
+
+        Backend examples:
+        - print statements
+        - TODO / FIXME markers
+        - broad exception swallowing
+        """
+        files = await self._safe_list_files(github_mcp_client, repo_root)
+        findings: List[OutdatedComponentFinding] = []
+
+        for file_path in files:
+            normalized = str(file_path).replace("\\", "/").lower()
+
+            if not normalized.endswith(
+                (".js", ".jsx", ".ts", ".tsx", ".css", ".scss", ".py")
+            ):
+                continue
+
+            try:
+                content = await self._safe_read_file(github_mcp_client, file_path)
+            except Exception:
+                continue
+
+            # Frontend heuristics
+            if normalized.endswith((".js", ".jsx", ".ts", ".tsx", ".css", ".scss")):
+                findings.extend(self._scan_frontend_outdated_patterns(content, file_path))
+
+            # Backend heuristics
+            if normalized.endswith(".py") or (
+                normalized.endswith((".ts", ".js"))
+                and any(token in normalized for token in ["/api/", "/server/", "/backend/", "/services/"])
+            ):
+                findings.extend(self._scan_backend_outdated_patterns(content, file_path))
+
+        return [asdict(item) for item in findings]
+
+    def _scan_frontend_outdated_patterns(
+        self,
+        content: str,
+        file_path: str,
+    ) -> List[OutdatedComponentFinding]:
+        out: List[OutdatedComponentFinding] = []
+
+        for match in self._INLINE_STYLE_JSX_PATTERN.finditer(content):
+            out.append(
+                OutdatedComponentFinding(
+                    type="OUTDATED_FRONTEND_COMPONENT",
+                    file_path=file_path,
+                    reason="Inline style usage detected (legacy styling pattern).",
+                    severity="MEDIUM",
+                    confidence_score=0.88,
+                    line=self._line_from_index(content, match.start()),
+                    snippet=self._get_line_snippet(content, match.start()),
+                )
+            )
+
+        for match in self._HEX_PATTERN.finditer(content):
+            out.append(
+                OutdatedComponentFinding(
+                    type="OUTDATED_FRONTEND_COMPONENT",
+                    file_path=file_path,
+                    reason="Hardcoded color value detected instead of tokenized styling.",
+                    severity="LOW",
+                    confidence_score=0.82,
+                    line=self._line_from_index(content, match.start()),
+                    snippet=self._get_line_snippet(content, match.start()),
+                )
+            )
+
+        for match in self._CONSOLE_LOG_PATTERN.finditer(content):
+            out.append(
+                OutdatedComponentFinding(
+                    type="OUTDATED_FRONTEND_COMPONENT",
+                    file_path=file_path,
+                    reason="console.log statement detected in frontend component.",
+                    severity="LOW",
+                    confidence_score=0.78,
+                    line=self._line_from_index(content, match.start()),
+                    snippet=self._get_line_snippet(content, match.start()),
+                )
+            )
+
+        return self._deduplicate_outdated_findings(out)
+
+    def _scan_backend_outdated_patterns(
+        self,
+        content: str,
+        file_path: str,
+    ) -> List[OutdatedComponentFinding]:
+        out: List[OutdatedComponentFinding] = []
+
+        for match in self._DEBUG_PRINT_PATTERN.finditer(content):
+            out.append(
+                OutdatedComponentFinding(
+                    type="OUTDATED_BACKEND_MODULE",
+                    file_path=file_path,
+                    reason="Debug print statement detected in backend/module code.",
+                    severity="LOW",
+                    confidence_score=0.8,
+                    line=self._line_from_index(content, match.start()),
+                    snippet=self._get_line_snippet(content, match.start()),
+                )
+            )
+
+        for match in self._TODO_PATTERN.finditer(content):
+            out.append(
+                OutdatedComponentFinding(
+                    type="OUTDATED_BACKEND_MODULE",
+                    file_path=file_path,
+                    reason="TODO marker suggests incomplete or deferred modernization work.",
+                    severity="LOW",
+                    confidence_score=0.76,
+                    line=self._line_from_index(content, match.start()),
+                    snippet=self._get_line_snippet(content, match.start()),
+                )
+            )
+
+        for match in self._FIXME_PATTERN.finditer(content):
+            out.append(
+                OutdatedComponentFinding(
+                    type="OUTDATED_BACKEND_MODULE",
+                    file_path=file_path,
+                    reason="FIXME marker suggests known technical debt or unresolved issue.",
+                    severity="MEDIUM",
+                    confidence_score=0.81,
+                    line=self._line_from_index(content, match.start()),
+                    snippet=self._get_line_snippet(content, match.start()),
+                )
+            )
+
+        broad_except = re.finditer(r"except\s+Exception\s*:", content)
+        for match in broad_except:
+            out.append(
+                OutdatedComponentFinding(
+                    type="OUTDATED_BACKEND_MODULE",
+                    file_path=file_path,
+                    reason="Broad exception handling pattern detected.",
+                    severity="MEDIUM",
+                    confidence_score=0.79,
+                    line=self._line_from_index(content, match.start()),
+                    snippet=self._get_line_snippet(content, match.start()),
+                )
+            )
+
+        return self._deduplicate_outdated_findings(out)
+
+    @staticmethod
+    def _deduplicate_outdated_findings(
+        findings: List[OutdatedComponentFinding],
+    ) -> List[OutdatedComponentFinding]:
+        seen = set()
+        deduped: List[OutdatedComponentFinding] = []
+
+        for item in findings:
+            key = (item.type, item.file_path, item.reason, item.line, item.snippet)
+            if key not in seen:
+                seen.add(key)
+                deduped.append(item)
+
+        return deduped
+
+    @staticmethod
+    def _line_from_index(text: str, index: int) -> int:
+        return text.count("\n", 0, index) + 1
 
     @staticmethod
     def _get_line_snippet(text: str, index: int, max_len: int = 220) -> str:

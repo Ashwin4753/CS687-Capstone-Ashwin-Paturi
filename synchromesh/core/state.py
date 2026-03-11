@@ -2,9 +2,7 @@ import json
 import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-
 import yaml
-
 
 class StateManager:
     """
@@ -32,6 +30,7 @@ class StateManager:
         total_findings: int,
         recommendations: List[Dict[str, Any]],
         patches_applied: int,
+        outdated_components: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """
         Computes runtime metrics for dashboarding and orchestration.
@@ -68,6 +67,20 @@ class StateManager:
         if low_count > 0:
             fix_success_rate = round((patches_applied / low_count) * 100.0, 2)
 
+        outdated_component_count = len(outdated_components or [])
+        outdated_frontend_count = len(
+            [
+                item for item in (outdated_components or [])
+                if str(item.get("type", "")).upper() == "OUTDATED_FRONTEND_COMPONENT"
+            ]
+        )
+        outdated_backend_count = len(
+            [
+                item for item in (outdated_components or [])
+                if str(item.get("type", "")).upper() == "OUTDATED_BACKEND_MODULE"
+            ]
+        )
+
         status = "🎯 TARGET MET" if parity_score >= self.target_score else "🚧 IN PROGRESS"
 
         metrics = {
@@ -83,6 +96,9 @@ class StateManager:
             "fix_success_rate": fix_success_rate,
             "parity_score": parity_score,
             "target_parity_score": self.target_score,
+            "outdated_component_count": outdated_component_count,
+            "outdated_frontend_count": outdated_frontend_count,
+            "outdated_backend_count": outdated_backend_count,
             "status": status,
         }
 

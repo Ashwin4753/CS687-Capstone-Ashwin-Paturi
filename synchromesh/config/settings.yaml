@@ -3,15 +3,12 @@ project:
   version: "1.0.0"
   env: "development"
 
-# 1. LLM Configuration (Google ADK)
 llm:
   provider: "google"
   model_name: "gemini-1.5-pro"
   temperature: 0.2
   max_tokens: 4096
 
-# 2. Integration Layer (MCP)
-# Servers are launched via stdio MCP clients in code
 mcp:
   figma:
     sync_interval: 3600
@@ -20,42 +17,32 @@ mcp:
     pr_prefix: "synchromesh/ui-sync-"
     repo_root: "./target_repo"
 
-# 3. Design Token Configuration
 design_tokens:
   format: "var(--{token})"
 
-# 4. Governance & Risk Model
 governance:
-
   auto_apply_low_risk: true
-
   require_approval_for:
     - MEDIUM
     - HIGH
-
   max_files_per_sync: 10
-
   restricted_directories:
-    - "/src/core/auth"
-    - "/public"
+    - "src/core/auth"
+    - "public"
 
-# 5. Evaluation & Metrics
 metrics:
   target_parity_score: 95.0
   export_format: "json"
   log_retention_days: 30
   trace_path: "evaluation/traces/"
 
-# 6. Output Artifacts
 outputs:
   base_path: "outputs/"
 
-# 7. Logging (optional future integration)
 logging:
   level: "INFO"
   file: "logs/synchromesh.log"
 
-# 8. UI Settings
 ui:
   theme: "dark"
   show_reasoning_traces: true

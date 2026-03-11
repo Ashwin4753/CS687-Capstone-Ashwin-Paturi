@@ -41,6 +41,7 @@ logs/
 # -----------------------------
 .DS_Store
 Thumbs.db
+._*
 
 # -----------------------------
 # Streamlit Cache
@@ -59,6 +60,8 @@ dist/
 # -----------------------------
 outputs/
 evaluation/reports/
+evaluation/traces/
+evaluation/data_exports/
 reports/
 artifacts/
 
@@ -69,6 +72,7 @@ artifacts/
 *.temp
 *.bak
 *.swp
+*.pid
 
 # -----------------------------
 # Notebook Checkpoints
@@ -87,3 +91,10 @@ htmlcov/
 # MCP Runtime Artifacts
 # -----------------------------
 .mcp_cache/
+
+# -----------------------------
+# Local Databases
+# -----------------------------
+*.db
+*.sqlite
+*.sqlite3

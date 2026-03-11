@@ -3,7 +3,6 @@ import streamlit as st
 
 from interaction.approval_gate import ApprovalGate
 
-
 def _risk_badge(risk: str) -> str:
     risk = str(risk).upper()
     if risk == "LOW":
@@ -13,7 +12,6 @@ def _risk_badge(risk: str) -> str:
     if risk == "HIGH":
         return "🔴 HIGH"
     return risk
-
 
 def render_approval_queue(context_store, settings: Optional[dict] = None):
     """
@@ -51,6 +49,18 @@ def render_approval_queue(context_store, settings: Optional[dict] = None):
 
     if "approved_change_ids" not in st.session_state:
         st.session_state["approved_change_ids"] = set()
+
+    # Governance policy viewer
+    with st.expander("Governance Policy Viewer", expanded=False):
+        st.write(f"**Auto apply LOW risk:** {auto_approve_low}")
+        st.write(f"**Approval required for:** {sorted(require_approval_for)}")
+        st.write(f"**Max files per sync:** {max_files}")
+        st.write("**Restricted directories:**")
+        if restricted_dirs:
+            for item in restricted_dirs:
+                st.write(f"- `{item}`")
+        else:
+            st.caption("No restricted directories configured.")
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Autonomous", len(buckets["autonomous"]))

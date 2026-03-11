@@ -1,10 +1,10 @@
+import asyncio
 import json
 import os
 from typing import Any, Dict, List, Optional, Set
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-
 
 class GitHubMCPClient:
     """
@@ -19,13 +19,16 @@ class GitHubMCPClient:
       - health_check() -> bool
     """
 
-    def __init__(self, server_path: str = "npx"):
+    def __init__(self, server_path: str = "npx", timeout_seconds: int = 20, max_file_chars: int = 200000):
         token = os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN") or os.getenv("GITHUB_TOKEN")
         if not token:
             raise RuntimeError(
                 "Missing GITHUB_PERSONAL_ACCESS_TOKEN (or GITHUB_TOKEN) in environment. "
                 "Do not hardcode secrets in code."
             )
+
+        self.timeout_seconds = timeout_seconds
+        self.max_file_chars = max_file_chars
 
         self.server_params = StdioServerParameters(
             command=server_path,
@@ -49,7 +52,7 @@ class GitHubMCPClient:
     async def list_available_tools(self) -> List[str]:
         async with stdio_client(self.server_params) as (read, write):
             async with ClientSession(read, write) as session:
-                await session.initialize()
+                await asyncio.wait_for(session.initialize(), timeout=self.timeout_seconds)
                 return await self._list_tool_names(session)
 
     async def health_check(self) -> bool:
@@ -69,13 +72,13 @@ class GitHubMCPClient:
 
         Strategy:
         1. Try repo-tree/list-files tools if the MCP server exposes them.
-        2. Fall back to search_code queries for common frontend file extensions.
+        2. Fall back to search_code queries for common frontend/backend file extensions.
         """
         owner, repo = self._require_repo()
 
         async with stdio_client(self.server_params) as (read, write):
             async with ClientSession(read, write) as session:
-                await session.initialize()
+                await asyncio.wait_for(session.initialize(), timeout=self.timeout_seconds)
                 tool_names = await self._list_tool_names(session)
 
                 tree_candidates = [
@@ -102,7 +105,10 @@ class GitHubMCPClient:
 
                     for payload in payload_candidates:
                         try:
-                            result = await session.call_tool(tree_tool, payload)
+                            result = await asyncio.wait_for(
+                                session.call_tool(tree_tool, payload),
+                                timeout=self.timeout_seconds,
+                            )
                             files = self._extract_file_list(result)
                             if files:
                                 return self._filter_repo_root(files, repo_root)
@@ -131,7 +137,7 @@ class GitHubMCPClient:
 
         async with stdio_client(self.server_params) as (read, write):
             async with ClientSession(read, write) as session:
-                await session.initialize()
+                await asyncio.wait_for(session.initialize(), timeout=self.timeout_seconds)
                 tool_names = await self._list_tool_names(session)
 
                 candidates = [
@@ -154,10 +160,13 @@ class GitHubMCPClient:
                 last_error = None
                 for payload in payload_candidates:
                     try:
-                        result = await session.call_tool(tool, payload)
+                        result = await asyncio.wait_for(
+                            session.call_tool(tool, payload),
+                            timeout=self.timeout_seconds,
+                        )
                         text = self._extract_text_content(result)
                         if text:
-                            return text
+                            return text[: self.max_file_chars]
                     except Exception as e:
                         last_error = e
 
@@ -179,7 +188,7 @@ class GitHubMCPClient:
 
         async with stdio_client(self.server_params) as (read, write):
             async with ClientSession(read, write) as session:
-                await session.initialize()
+                await asyncio.wait_for(session.initialize(), timeout=self.timeout_seconds)
                 tool_names = await self._list_tool_names(session)
 
                 candidates = [
@@ -199,7 +208,10 @@ class GitHubMCPClient:
 
                 for payload in payload_candidates:
                     try:
-                        await session.call_tool(tool, payload)
+                        await asyncio.wait_for(
+                            session.call_tool(tool, payload),
+                            timeout=self.timeout_seconds,
+                        )
                         return
                     except Exception:
                         continue
@@ -211,7 +223,7 @@ class GitHubMCPClient:
 
         async with stdio_client(self.server_params) as (read, write):
             async with ClientSession(read, write) as session:
-                await session.initialize()
+                await asyncio.wait_for(session.initialize(), timeout=self.timeout_seconds)
                 tool_names = await self._list_tool_names(session)
 
                 candidates = ["create_pull_request", "open_pull_request"]
@@ -221,16 +233,19 @@ class GitHubMCPClient:
                         f"No create-pull-request tool found. Available tools: {tool_names}"
                     )
 
-                return await session.call_tool(
-                    tool,
-                    {
-                        "owner": owner,
-                        "repo": repo,
-                        "title": title,
-                        "head": head,
-                        "base": base,
-                        "body": body,
-                    },
+                return await asyncio.wait_for(
+                    session.call_tool(
+                        tool,
+                        {
+                            "owner": owner,
+                            "repo": repo,
+                            "title": title,
+                            "head": head,
+                            "base": base,
+                            "body": body,
+                        },
+                    ),
+                    timeout=self.timeout_seconds,
                 )
 
     async def _search_code_file_list(
@@ -250,7 +265,7 @@ class GitHubMCPClient:
         files: Set[str] = set()
         last_error = None
 
-        extensions = ["tsx", "ts", "jsx", "js", "css", "scss"]
+        extensions = ["tsx", "ts", "jsx", "js", "css", "scss", "py"]
 
         for ext in extensions:
             queries = [f"repo:{owner}/{repo} extension:{ext}"]
@@ -268,7 +283,10 @@ class GitHubMCPClient:
 
                 for payload in payload_candidates:
                     try:
-                        result = await session.call_tool(search_tool, payload)
+                        result = await asyncio.wait_for(
+                            session.call_tool(search_tool, payload),
+                            timeout=self.timeout_seconds,
+                        )
                         discovered = self._extract_search_code_paths(result)
 
                         for path in discovered:
@@ -309,7 +327,7 @@ class GitHubMCPClient:
         return self.owner, self.repo
 
     async def _list_tool_names(self, session: ClientSession) -> List[str]:
-        tools = await session.list_tools()
+        tools = await asyncio.wait_for(session.list_tools(), timeout=self.timeout_seconds)
         if hasattr(tools, "tools"):
             return [t.name for t in tools.tools]
         return []

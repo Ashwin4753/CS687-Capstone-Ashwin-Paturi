@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -16,7 +16,6 @@ from evaluation.validator import GroundTruthValidator
 from evaluation.report_generator import ModernizationReportGenerator
 from interaction.approval_gate import ApprovalGate
 
-
 class SynchroMeshOrchestrator:
     """
     Central workflow coordinator for SynchroMesh.
@@ -24,12 +23,13 @@ class SynchroMeshOrchestrator:
     Pipeline:
       1) GitHub MCP lists files and reads code
       2) Archaeologist detects hard-coded drift
-      3) Archaeologist computes lightweight dependency impact signals
-      4) Figma MCP provides authoritative design tokens
-      5) Stylist maps findings to tokens and assigns risk
-      6) ApprovalGate enforces governance policy
-      7) Syncer applies approved LOW-risk substitutions and drafts PR info
-      8) Runtime + evaluation metrics are computed and exported
+      3) Archaeologist computes dependency impact signals
+      4) Archaeologist detects outdated frontend/backend modules
+      5) Figma MCP provides authoritative design tokens
+      6) Stylist maps findings to tokens and assigns risk
+      7) ApprovalGate enforces governance policy
+      8) Syncer applies approved LOW-risk substitutions and drafts PR info
+      9) Runtime + evaluation metrics are computed and exported
     """
 
     def __init__(self, config_path: str = "config/settings.yaml"):
@@ -75,15 +75,41 @@ class SynchroMeshOrchestrator:
         self.context.set_run_context(repo=repo_root, figma_file_id=figma_file_id)
 
         token_format = self.config.get("design_tokens", {}).get("format", "var(--{token})")
+        pipeline_status: List[Dict[str, Any]] = []
+        run_timeline: List[Dict[str, Any]] = []
+
+        def mark_stage(name: str, status: str, duration_s: float | None = None, details: str = ""):
+            pipeline_status.append(
+                {
+                    "stage": name,
+                    "status": status,
+                    "details": details,
+                }
+            )
+            if duration_s is not None:
+                run_timeline.append(
+                    {
+                        "stage": name,
+                        "duration_s": round(duration_s, 3),
+                    }
+                )
 
         # --- 1) list files ---
+        start = time.perf_counter()
         files = await self._safe_list_files(github_mcp_client, repo_root)
         code_files = [
             f for f in files
-            if f.endswith((".js", ".jsx", ".ts", ".tsx", ".css", ".scss"))
+            if f.endswith((".js", ".jsx", ".ts", ".tsx", ".css", ".scss", ".py"))
         ]
+        mark_stage(
+            "Repository Scan",
+            "completed",
+            time.perf_counter() - start,
+            f"Discovered {len(code_files)} code files.",
+        )
 
         # --- 2) archaeology: drift findings ---
+        start = time.perf_counter()
         all_findings: List[dict] = []
         for file_path in code_files:
             content = await self._safe_read_file(github_mcp_client, file_path)
@@ -91,24 +117,75 @@ class SynchroMeshOrchestrator:
             all_findings.extend(findings)
 
         self.context.add_detected_drift(all_findings)
+        mark_stage(
+            "Drift Detection",
+            "completed",
+            time.perf_counter() - start,
+            f"Detected {len(all_findings)} drift finding(s).",
+        )
 
         # --- 3) archaeology: dependency analysis / impact hints ---
+        start = time.perf_counter()
         dependency_analysis = await self.archaeologist.analyze_dependencies(
             github_mcp_client=github_mcp_client,
             repo_root=repo_root,
         )
+        mark_stage(
+            "Dependency Analysis",
+            "completed",
+            time.perf_counter() - start,
+            "Computed lightweight dependency and impact signals.",
+        )
 
-        # --- 4) figma tokens ---
+        # --- 4) archaeology: outdated component/module audit ---
+        start = time.perf_counter()
+        outdated_components: List[Dict[str, Any]] = []
+        detect_fn = getattr(self.archaeologist, "detect_outdated_components", None)
+        if callable(detect_fn):
+            try:
+                outdated_components = await detect_fn(
+                    github_mcp_client=github_mcp_client,
+                    repo_root=repo_root,
+                )
+            except Exception:
+                outdated_components = []
+
+        if outdated_components:
+            self.context.add_outdated_components(outdated_components)
+
+        mark_stage(
+            "Engineering Audit",
+            "completed",
+            time.perf_counter() - start,
+            f"Detected {len(outdated_components)} outdated component/module finding(s).",
+        )
+
+        # --- 5) figma tokens ---
+        start = time.perf_counter()
         tokens = await self._safe_get_figma_tokens(figma_mcp_client, figma_file_id)
+        mark_stage(
+            "Design Token Fetch",
+            "completed",
+            time.perf_counter() - start,
+            f"Loaded {len(tokens) if isinstance(tokens, dict) else 0} token(s).",
+        )
 
-        # --- 5) stylist recommendations ---
+        # --- 6) stylist recommendations ---
+        start = time.perf_counter()
         raw_recommendations = self.stylist.detect_drift(
             ghost_styles=all_findings,
             figma_tokens=tokens,
             token_format=token_format,
         )
+        mark_stage(
+            "Token Matching",
+            "completed",
+            time.perf_counter() - start,
+            f"Generated {len(raw_recommendations)} recommendation(s).",
+        )
 
-        # --- 6) governance ---
+        # --- 7) governance ---
+        start = time.perf_counter()
         buckets = self.approval_gate.process_recommendations(raw_recommendations)
 
         governed_recommendations = (
@@ -117,7 +194,6 @@ class SynchroMeshOrchestrator:
             + buckets.get("blocked", [])
         )
 
-        # Apply explicit human approvals from UI rerun
         approved_lookup = {
             (item.get("file_path"), item.get("line"), item.get("original_value")): True
             for item in (approved_changes or [])
@@ -135,8 +211,30 @@ class SynchroMeshOrchestrator:
         self.context.add_recommendations(governed_recommendations)
         self.context.set_approved_changes(approved_recommendations)
 
-        # --- 7) trace logs for explainability/evaluation ---
-        trace_logs = self._build_trace_logs(governed_recommendations)
+        approval_required = [
+            rec
+            for rec in governed_recommendations
+            if (
+                str(rec.get("risk_level", "")).upper() in {"MEDIUM", "HIGH"}
+                and not rec.get("approved", False)
+                and rec not in buckets.get("blocked", [])
+            )
+        ]
+
+        gov_details = (
+            f"Autonomous={len(buckets.get('autonomous', []))}, "
+            f"Approval Required={len(buckets.get('approval_required', []))}, "
+            f"Blocked={len(buckets.get('blocked', []))}"
+        )
+        mark_stage(
+            "Governance Review",
+            "completed" if not approval_required else "awaiting_approval",
+            time.perf_counter() - start,
+            gov_details,
+        )
+
+        # --- 8) trace logs for explainability/evaluation ---
+        trace_logs = self._build_trace_logs(governed_recommendations, outdated_components)
         self.context.add_trace_logs(trace_logs)
 
         # --- Tier 1 feature data ---
@@ -150,27 +248,19 @@ class SynchroMeshOrchestrator:
             dependency_analysis=dependency_analysis,
         )
 
-        approval_required = [
-            rec
-            for rec in governed_recommendations
-            if (
-                str(rec.get("risk_level", "")).upper() in {"MEDIUM", "HIGH"}
-                and not rec.get("approved", False)
-                and rec not in buckets.get("blocked", [])
-            )
-        ]
-
-        # --- runtime metrics ---
+        # --- initial runtime metrics ---
         runtime_metrics = self.state.compute_metrics(
             total_findings=len(all_findings),
             recommendations=governed_recommendations,
             patches_applied=0,
+            outdated_components=outdated_components,
         )
 
         # --- evaluation metrics ---
         formal_parity = self.parity_calculator.calculate_metrics(
             drift_report=all_findings,
             total_components=len(code_files),
+            outdated_components=outdated_components,
         )
 
         reasoning_stats = self.log_analyzer.extract_reasoning_stats(trace_logs)
@@ -183,6 +273,10 @@ class SynchroMeshOrchestrator:
             "token_coverage": token_coverage,
             "component_impact": component_impact,
             "dependency_analysis": dependency_analysis,
+            "outdated_components": outdated_components,
+            "outdated_component_count": len(outdated_components),
+            "pipeline_status": pipeline_status,
+            "run_timeline": run_timeline,
         }
 
         if ground_truth:
@@ -192,59 +286,68 @@ class SynchroMeshOrchestrator:
             )
 
         self.context.set_evaluation(evaluation)
+        self.context.set_pipeline_status(pipeline_status)
+        self.context.set_run_timeline(run_timeline)
 
-        # --- return early if approval is required ---
-        if approval_required:
-            self.context.set_metrics(runtime_metrics)
+        # --- 9) syncer execution ---
+        sync_result: Dict[str, Any] = {
+            "summary": {"applied": 0, "skipped": 0, "files_touched": 0},
+            "patches": [],
+            "skipped": [],
+            "applied_recommendations": [],
+            "pull_request": {},
+        }
 
-            report_path = self.report_generator.generate_report(
-                run_id=self.context.shared_memory.get("run_id", "unknown"),
-                repo=repo_root,
-                figma_file_id=figma_file_id,
-                findings=all_findings,
+        if approved_recommendations:
+            start = time.perf_counter()
+            sync_result = await self.syncer.apply_token_swaps(
                 recommendations=governed_recommendations,
-                metrics=runtime_metrics,
-                evaluation=evaluation,
-                sync_result=None,
+                github_mcp=github_mcp_client,
+                require_approved=True,
+                approved_key="approved",
             )
 
-            self.context.set_report_path(report_path)
+            patches_applied = int(sync_result.get("summary", {}).get("applied", 0))
+            self.context.add_patches(sync_result.get("patches", []))
 
-            trace_path = self.context.save_session_trace()
-            outputs = self.context.export_outputs()
+            mark_stage(
+                "Sync Execution",
+                "completed",
+                time.perf_counter() - start,
+                f"Applied {patches_applied} approved low-risk substitution(s).",
+            )
+        else:
+            patches_applied = 0
+            if approval_required:
+                mark_stage(
+                    "Sync Execution",
+                    "pending",
+                    0.0,
+                    "Waiting for approved LOW-risk changes before sync execution.",
+                )
+            else:
+                mark_stage(
+                    "Sync Execution",
+                    "completed",
+                    0.0,
+                    "No approved LOW-risk substitutions available for execution.",
+                )
 
-            return {
-                "status": "AWAITING_APPROVAL",
-                "message": "Approval required for MEDIUM/HIGH recommendations.",
-                "needs_approval_count": len(approval_required),
-                "metrics": runtime_metrics,
-                "evaluation": evaluation,
-                "trace_path": trace_path,
-                "report_path": report_path,
-                "outputs": outputs,
-            }
+        self.context.set_pipeline_status(pipeline_status)
+        self.context.set_run_timeline(run_timeline)
 
-        # --- 8) syncer execution ---
-        sync_result = await self.syncer.apply_token_swaps(
-            recommendations=governed_recommendations,
-            github_mcp=github_mcp_client,
-            require_approved=True,
-            approved_key="approved",
-        )
-
-        patches_applied = int(sync_result.get("summary", {}).get("applied", 0))
-        self.context.add_patches(sync_result.get("patches", []))
-
-        # recompute runtime metrics after patch application
+        # --- recompute final runtime metrics ---
         runtime_metrics = self.state.compute_metrics(
             total_findings=len(all_findings),
             recommendations=governed_recommendations,
             patches_applied=patches_applied,
+            outdated_components=outdated_components,
         )
         self.context.set_metrics(runtime_metrics)
 
-        # refresh evaluation with final runtime metrics
         evaluation["runtime_metrics"] = runtime_metrics
+        evaluation["pipeline_status"] = pipeline_status
+        evaluation["run_timeline"] = run_timeline
         self.context.set_evaluation(evaluation)
 
         report_path = self.report_generator.generate_report(
@@ -262,6 +365,21 @@ class SynchroMeshOrchestrator:
         trace_path = self.context.save_session_trace()
         outputs = self.context.export_outputs()
 
+        if approval_required:
+            return {
+                "status": "PARTIAL_COMPLETED_AWAITING_APPROVAL" if patches_applied > 0 else "AWAITING_APPROVAL",
+                "message": "Some MEDIUM/HIGH recommendations still require approval.",
+                "needs_approval_count": len(approval_required),
+                "metrics": runtime_metrics,
+                "evaluation": evaluation,
+                "sync_result": sync_result,
+                "trace_path": trace_path,
+                "report_path": report_path,
+                "outputs": outputs,
+                "pipeline_status": pipeline_status,
+                "run_timeline": run_timeline,
+            }
+
         return {
             "status": "COMPLETED",
             "metrics": runtime_metrics,
@@ -270,9 +388,15 @@ class SynchroMeshOrchestrator:
             "trace_path": trace_path,
             "report_path": report_path,
             "outputs": outputs,
+            "pipeline_status": pipeline_status,
+            "run_timeline": run_timeline,
         }
 
-    def _build_trace_logs(self, recommendations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _build_trace_logs(
+        self,
+        recommendations: List[Dict[str, Any]],
+        outdated_components: Optional[List[Dict[str, Any]]] = None,
+    ) -> List[Dict[str, Any]]:
         """
         Builds lightweight structured trace logs for runtime explainability.
         """
@@ -294,6 +418,19 @@ class SynchroMeshOrchestrator:
                 }
             )
 
+        for item in outdated_components or []:
+            trace_logs.append(
+                {
+                    "agent_name": "Archaeologist",
+                    "action_taken": "detected outdated component/module",
+                    "confidence_score": item.get("confidence_score", 0.8),
+                    "timestamp": datetime.now().isoformat(),
+                    "file_path": item.get("file_path", ""),
+                    "line": item.get("line", ""),
+                    "token": item.get("type", ""),
+                }
+            )
+
         return trace_logs
 
     def _build_drift_heatmap(self, findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -303,11 +440,10 @@ class SynchroMeshOrchestrator:
             file_path = str(finding.get("file_path", "unknown"))
             counts[file_path] = counts.get(file_path, 0) + 1
 
-        heatmap = [
+        return [
             {"file_path": file_path, "drift_count": count}
             for file_path, count in sorted(counts.items(), key=lambda item: item[1], reverse=True)
         ]
-        return heatmap
 
     def _build_token_coverage(
         self,
@@ -346,7 +482,6 @@ class SynchroMeshOrchestrator:
             file_path = row.get("file_path", "")
             drift_count = int(row.get("drift_count", 0))
 
-            # heuristic best-effort match between file name and reverse import path strings
             file_name = file_path.split("/")[-1]
             import_count = 0
             for import_key, count in reverse_import_counts.items():

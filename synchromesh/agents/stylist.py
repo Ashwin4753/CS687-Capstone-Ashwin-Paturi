@@ -7,7 +7,6 @@ try:
 except Exception:
     Agent = None
 
-
 @dataclass
 class Recommendation:
     file_path: str
@@ -22,7 +21,6 @@ class Recommendation:
     span_start: Optional[int] = None
     span_end: Optional[int] = None
     snippet: str = ""
-
 
 class StylistAgent:
     """
@@ -40,8 +38,6 @@ class StylistAgent:
     """
 
     def __init__(self) -> None:
-        # For demo/runtime stability we do not instantiate ADK directly here,
-        # since constructor APIs vary across versions.
         self.agent = None
 
     def _adk_call(self, prompt: str, context: Optional[Dict[str, Any]] = None) -> str:
@@ -88,14 +84,6 @@ class StylistAgent:
     ) -> List[Dict[str, Any]]:
         """
         Converts Archaeologist findings into governed recommendations.
-
-        Inputs:
-        - ghost_styles: output of ArchaeologistAgent.find_ghost_styles()
-        - figma_tokens: token map, ideally {token_name: token_value}
-        - token_format: how tokens should be rendered in replacement text
-
-        Returns:
-        - List[Dict[str, Any]] ready for ApprovalGate, Syncer, UI, and evaluation
         """
         value_to_token = self._build_value_to_token_map(figma_tokens)
         token_to_value = self._build_token_to_value_map(figma_tokens)
@@ -114,7 +102,6 @@ class StylistAgent:
 
             kind = self._normalize_kind(kind_raw)
 
-            # HIGH: inline style blocks
             if kind == "INLINE_STYLE":
                 recommendations.append(
                     Recommendation(
@@ -141,7 +128,6 @@ class StylistAgent:
                 )
                 continue
 
-            # HIGH: unknown finding types
             if kind == "UNKNOWN":
                 recommendations.append(
                     Recommendation(
@@ -171,7 +157,6 @@ class StylistAgent:
 
             normalized = self._normalize_value(original_value, kind)
 
-            # LOW: exact token match
             exact_token = value_to_token.get(normalized)
             if exact_token:
                 replacement_text = token_format.format(token=exact_token)
@@ -203,7 +188,6 @@ class StylistAgent:
                 )
                 continue
 
-            # MEDIUM: approximate color match only
             approx_token: Optional[str] = None
             approx_score: Optional[float] = None
 
@@ -244,7 +228,6 @@ class StylistAgent:
                 )
                 continue
 
-            # HIGH: unknown / unmatched token
             recommendations.append(
                 Recommendation(
                     file_path=file_path,
@@ -299,11 +282,6 @@ class StylistAgent:
         return "UNKNOWN"
 
     def _build_token_to_value_map(self, figma_tokens: Dict[str, Any]) -> Dict[str, str]:
-        """
-        Supports both:
-        - {token_name: value}
-        - nested token dicts
-        """
         flat: Dict[str, str] = {}
 
         def walk(prefix: str, obj: Any) -> None:
@@ -323,12 +301,6 @@ class StylistAgent:
         return flat
 
     def _build_value_to_token_map(self, figma_tokens: Dict[str, Any]) -> Dict[str, str]:
-        """
-        Builds normalized value -> token lookup.
-
-        If multiple tokens normalize to the same value, the first one encountered wins.
-        This keeps behavior deterministic enough for capstone/demo purposes.
-        """
         token_to_value = self._build_token_to_value_map(figma_tokens)
         value_to_token: Dict[str, str] = {}
 
@@ -358,14 +330,12 @@ class StylistAgent:
     def _normalize_color(value: str) -> Optional[str]:
         raw = value.strip().lower()
 
-        # Normalize hex (#fff -> #ffffff)
         if raw.startswith("#") and len(raw) in (4, 7):
             if len(raw) == 4:
                 r, g, b = raw[1], raw[2], raw[3]
                 return f"#{r}{r}{g}{g}{b}{b}"
             return raw
 
-        # Normalize rgb()/rgba() to hex (alpha ignored for parity matching)
         if raw.startswith("rgb"):
             nums = []
             current = ""
@@ -411,10 +381,6 @@ class StylistAgent:
         normalized_value: str,
         token_to_value: Dict[str, str],
     ) -> Tuple[Optional[str], Optional[float]]:
-        """
-        Returns (token, similarity) where similarity is in [0, 1].
-        Approximate matching is only used for color recommendations.
-        """
         target_rgb = self._hex_to_rgb(normalized_value)
         if target_rgb is None:
             return None, None
@@ -458,9 +424,6 @@ class StylistAgent:
 
     @staticmethod
     def _rgb_similarity(a: Tuple[int, int, int], b: Tuple[int, int, int]) -> float:
-        """
-        Euclidean RGB similarity normalized to [0, 1].
-        """
         import math
 
         dr = a[0] - b[0]
