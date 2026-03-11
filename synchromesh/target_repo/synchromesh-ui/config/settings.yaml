@@ -1,0 +1,53 @@
+# ==========================================
+# SynchroMesh: Global Configuration
+# CS 687 Capstone - Winter 2026
+# ==========================================
+
+project:
+  name: "SynchroMesh Orchestrator"
+  version: "1.0.0"
+  env: "development" # development, production, test
+
+# 1. LLM Configuration (Google ADK)
+# Defines the brain used by the specialized agents
+llm:
+  provider: "google"
+  model_name: "gemini-1.5-pro"
+  temperature: 0.2 # Lower temperature for higher precision in code refactoring
+  max_tokens: 4096
+
+# 2. Integration Layer (MCP)
+# Connection settings for the Model Context Protocol servers
+mcp:
+  figma:
+    server_url: "http://localhost:5001"
+    timeout: 30 # seconds
+    sync_interval: 3600 # 1 hour
+  github:
+    server_url: "http://localhost:5002"
+    default_branch: "main"
+    pr_prefix: "synchromesh/ui-sync-"
+
+# 3. Governance & Risk (Approval Gate)
+# Thresholds for the Staged Autonomy model
+governance:
+  auto_apply_low_risk: true
+  high_risk_threshold: 0.85 # Minimum confidence required for autonomous action
+  max_files_per_sync: 10     # Flag for review if more than 10 files change
+  restricted_directories:
+    - "/src/core/auth"
+    - "/public"
+
+# 4. Evaluation & Metrics
+# Targets for the Data Collection phase
+metrics:
+  target_parity_score: 95.0
+  export_format: "json"
+  log_retention_days: 30
+  trace_path: "evaluation/traces/"
+
+# 5. UI Settings (Streamlit)
+ui:
+  theme: "dark"
+  show_reasoning_traces: true
+  refresh_rate: 5 # seconds
