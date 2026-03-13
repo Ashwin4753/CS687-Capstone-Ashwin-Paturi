@@ -2,6 +2,7 @@ import json
 import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+
 import yaml
 
 class StateManager:
@@ -31,6 +32,9 @@ class StateManager:
         recommendations: List[Dict[str, Any]],
         patches_applied: int,
         outdated_components: Optional[List[Dict[str, Any]]] = None,
+        execution_mode: Optional[str] = None,
+        repo_source: Optional[str] = None,
+        repo_identifier: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Computes runtime metrics for dashboarding and orchestration.
@@ -99,6 +103,9 @@ class StateManager:
             "outdated_component_count": outdated_component_count,
             "outdated_frontend_count": outdated_frontend_count,
             "outdated_backend_count": outdated_backend_count,
+            "execution_mode": execution_mode or "unknown",
+            "repo_source": repo_source or "unknown",
+            "repo_identifier": repo_identifier or "unknown",
             "status": status,
         }
 

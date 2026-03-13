@@ -33,7 +33,7 @@ def _render_pipeline_grid(pipeline_status: List[Dict[str, Any]], cols_per_row: i
     rows = math.ceil(total / cols_per_row)
 
     for row_idx in range(rows):
-        row_items = pipeline_status[row_idx * cols_per_row : (row_idx + 1) * cols_per_row]
+        row_items = pipeline_status[row_idx * cols_per_row: (row_idx + 1) * cols_per_row]
         cols = st.columns(cols_per_row)
 
         for col_idx in range(cols_per_row):
@@ -71,12 +71,21 @@ def render_metrics(context_store):
     pipeline_status = memory.get("pipeline_status", []) or []
     run_timeline = memory.get("run_timeline", []) or []
     outdated_components = memory.get("outdated_components", []) or []
+    execution_mode = memory.get("execution_mode", "unknown")
+    repo_source = memory.get("repo_source", "unknown")
+    repo_identifier = memory.get("repo_identifier", memory.get("repo", "unknown"))
 
     st.markdown("### Dashboard")
 
     if not metrics:
         st.info("No metrics yet. Run the pipeline to generate evaluation results.")
         return
+
+    st.caption(
+        f"Execution mode: `{execution_mode}` | "
+        f"Repo source: `{repo_source}` | "
+        f"Repo identifier: `{repo_identifier}`"
+    )
 
     parity = metrics.get("parity_score", 0)
     target = metrics.get("target_parity_score", 95.0)

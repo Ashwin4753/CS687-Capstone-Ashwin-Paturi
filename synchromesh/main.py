@@ -1,10 +1,10 @@
 import os
-import sys
 import logging
 from pathlib import Path
-from typing import Dict
+
 from dotenv import load_dotenv
-import streamlit.web.cli as stcli
+
+from interaction.dashboard.app import main as dashboard_main
 
 # -----------------------------
 # Paths / directories
@@ -29,17 +29,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger("SynchroMesh-Root")
 
+
 def _bool_env_present(value: str | None) -> bool:
     return bool(value and str(value).strip())
+
 
 def load_environment() -> str:
     """
     Loads environment variables, determines execution mode, and logs startup state.
 
     Mode priority:
-      1. Explicit SYNCHROMESH_MODE=real|mock
+      1. Explicit SYNCHROMESH_MODE=mock|demo|real
       2. Auto-detect real mode if required credentials are present
-      3. Otherwise fall back to mock
+      3. Otherwise fall back to demo
     """
     load_dotenv()
 
@@ -49,7 +51,7 @@ def load_environment() -> str:
 
     forced_mode = (os.getenv("SYNCHROMESH_MODE") or "").strip().lower()
 
-    if forced_mode in {"mock", "real"}:
+    if forced_mode in {"mock", "demo", "real"}:
         mode = forced_mode
         logger.info("SYNCHROMESH_MODE override detected: %s", mode)
     else:
@@ -58,7 +60,7 @@ def load_environment() -> str:
             if _bool_env_present(figma_token)
             and _bool_env_present(github_token)
             and _bool_env_present(google_api_key)
-            else "mock"
+            else "demo"
         )
 
     missing = []
@@ -87,43 +89,6 @@ def load_environment() -> str:
     os.environ["SYNCHROMESH_MODE"] = mode
     return mode
 
-def _startup_summary() -> Dict[str, str]:
-    return {
-        "mode": os.getenv("SYNCHROMESH_MODE", "mock"),
-        "port": os.getenv("SYNCHROMESH_PORT", "8501"),
-        "address": os.getenv("SYNCHROMESH_ADDRESS", "0.0.0.0"),
-    }
-
-def launch_dashboard() -> None:
-    """
-    Programmatically launches the Streamlit dashboard.
-    """
-    dashboard_path = ROOT_DIR / "interaction" / "dashboard" / "app.py"
-    if not dashboard_path.exists():
-        logger.error("Dashboard file not found at %s", dashboard_path)
-        raise FileNotFoundError(f"Dashboard file not found at {dashboard_path}")
-
-    summary = _startup_summary()
-    logger.info(
-        "Launching SynchroMesh dashboard in %s mode on %s:%s",
-        summary["mode"].upper(),
-        summary["address"],
-        summary["port"],
-    )
-
-    sys.argv = [
-        "streamlit",
-        "run",
-        str(dashboard_path),
-        f"--server.port={summary['port']}",
-        f"--server.address={summary['address']}",
-    ]
-
-    try:
-        stcli.main()
-    except Exception as exc:
-        logger.exception("Failed to launch Streamlit dashboard: %s", exc)
-        raise
 
 if __name__ == "__main__":
     print(
@@ -134,4 +99,4 @@ SYNCHROMESH: AGENTIC DESIGN-CODE ORCHESTRATOR
 """
     )
     load_environment()
-    launch_dashboard()
+    dashboard_main()

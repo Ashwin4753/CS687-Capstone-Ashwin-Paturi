@@ -3,6 +3,13 @@ project:
   version: "1.0.0"
   env: "development"
 
+runtime:
+  default_mode: "mock"
+  supported_modes:
+    - mock
+    - demo
+    - real
+
 llm:
   provider: "google"
   model_name: "gemini-1.5-pro"
@@ -16,6 +23,9 @@ mcp:
     default_branch: "main"
     pr_prefix: "synchromesh/ui-sync-"
     repo_root: "./target_repo"
+
+demo:
+  local_repo_base: "./target_repo"
 
 design_tokens:
   format: "var(--{token})"

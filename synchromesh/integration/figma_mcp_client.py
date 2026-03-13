@@ -39,13 +39,16 @@ class FigmaMCPClient:
         return self.normalize_tokens(raw)
 
     async def list_available_tools(self) -> List[str]:
-        async with stdio_client(self.server_params) as (read, write):
-            async with ClientSession(read, write) as session:
-                await asyncio.wait_for(session.initialize(), timeout=self.timeout_seconds)
-                tools = await asyncio.wait_for(session.list_tools(), timeout=self.timeout_seconds)
-                if hasattr(tools, "tools"):
-                    return [t.name for t in tools.tools]
-                return []
+        try:
+            async with stdio_client(self.server_params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await asyncio.wait_for(session.initialize(), timeout=self.timeout_seconds)
+                    tools = await asyncio.wait_for(session.list_tools(), timeout=self.timeout_seconds)
+                    if hasattr(tools, "tools"):
+                        return [t.name for t in tools.tools]
+                    return []
+        except Exception as e:
+            raise RuntimeError(f"Figma MCP tool listing failed: {e}") from e
 
     async def health_check(self) -> bool:
         """
@@ -64,53 +67,59 @@ class FigmaMCPClient:
         Tool names can vary by server version; we discover tools first.
         Also tries multiple possible parameter names.
         """
-        async with stdio_client(self.server_params) as (read, write):
-            async with ClientSession(read, write) as session:
-                await asyncio.wait_for(session.initialize(), timeout=self.timeout_seconds)
+        try:
+            async with stdio_client(self.server_params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await asyncio.wait_for(session.initialize(), timeout=self.timeout_seconds)
 
-                tools = await asyncio.wait_for(session.list_tools(), timeout=self.timeout_seconds)
-                tool_names = [t.name for t in tools.tools] if hasattr(tools, "tools") else []
+                    tools = await asyncio.wait_for(session.list_tools(), timeout=self.timeout_seconds)
+                    tool_names = [t.name for t in tools.tools] if hasattr(tools, "tools") else []
 
-                candidates = [
-                    "get_file_tokens",
-                    "get_design_tokens",
-                    "get_tokens",
-                    "get_file_design_tokens",
-                ]
+                    candidates = [
+                        "get_file_tokens",
+                        "get_design_tokens",
+                        "get_tokens",
+                        "get_file_design_tokens",
+                    ]
 
-                selected: Optional[str] = None
-                for candidate in candidates:
-                    if candidate in tool_names:
-                        selected = candidate
-                        break
+                    selected: Optional[str] = None
+                    for candidate in candidates:
+                        if candidate in tool_names:
+                            selected = candidate
+                            break
 
-                if not selected:
-                    raise RuntimeError(
-                        "Figma MCP server is running but no known token tool was found. "
-                        f"Available tools: {tool_names}"
-                    )
-
-                payload_candidates = [
-                    {"file_key": file_key},
-                    {"fileKey": file_key},
-                    {"file_id": file_key},
-                    {"fileId": file_key},
-                ]
-
-                last_error = None
-                for payload in payload_candidates:
-                    try:
-                        result = await asyncio.wait_for(
-                            session.call_tool(selected, payload),
-                            timeout=self.timeout_seconds,
+                    if not selected:
+                        raise RuntimeError(
+                            "Figma MCP server is running but no known token tool was found. "
+                            f"Available tools: {tool_names}"
                         )
-                        return self._extract_content(result)
-                    except Exception as e:
-                        last_error = e
 
-                raise RuntimeError(
-                    f"Unable to call Figma MCP tool '{selected}' with known payload formats."
-                ) from last_error
+                    payload_candidates = [
+                        {"file_key": file_key},
+                        {"fileKey": file_key},
+                        {"file_id": file_key},
+                        {"fileId": file_key},
+                    ]
+
+                    last_error = None
+                    for payload in payload_candidates:
+                        try:
+                            result = await asyncio.wait_for(
+                                session.call_tool(selected, payload),
+                                timeout=self.timeout_seconds,
+                            )
+                            return self._extract_content(result)
+                        except Exception as e:
+                            last_error = e
+
+                    raise RuntimeError(
+                        f"Unable to call Figma MCP tool '{selected}' with known payload formats."
+                    ) from last_error
+        except Exception as e:
+            raise RuntimeError(
+                f"Figma MCP token fetch failed for file '{file_key}'. "
+                "Check token validity, MCP server compatibility, and tool availability."
+            ) from e
 
     @staticmethod
     def _extract_content(result: Any) -> Any:

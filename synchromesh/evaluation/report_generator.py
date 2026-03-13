@@ -36,13 +36,16 @@ class ModernizationReportGenerator:
 
         drift_heatmap = evaluation.get("drift_heatmap", []) or []
         token_coverage = evaluation.get("token_coverage", {}) or {}
-        component_impact = evaluation.get("component_impact", []) or []
+        component_impact = evaluation.get("component_impact", []) or {}
         formal_parity = evaluation.get("formal_parity", {}) or {}
         reasoning_stats = evaluation.get("reasoning_stats", {}) or {}
         ground_truth_validation = evaluation.get("ground_truth_validation")
         outdated_components = evaluation.get("outdated_components", []) or []
         pipeline_status = evaluation.get("pipeline_status", []) or []
         run_timeline = evaluation.get("run_timeline", []) or []
+        execution_mode = evaluation.get("execution_mode") or metrics.get("execution_mode") or "unknown"
+        repo_source = evaluation.get("repo_source") or metrics.get("repo_source") or "unknown"
+        repo_identifier = evaluation.get("repo_identifier") or repo
 
         sync_summary = sync_result.get("summary", {}) if sync_result else {}
         pr_payload = sync_result.get("pull_request", {}) if sync_result else {}
@@ -54,6 +57,9 @@ class ModernizationReportGenerator:
         lines.append(f"**Run ID:** `{run_id}`")
         lines.append(f"**Generated At:** `{datetime.now().isoformat()}`")
         lines.append(f"**Repository:** `{repo}`")
+        lines.append(f"**Repository Identifier:** `{repo_identifier}`")
+        lines.append(f"**Repository Source:** `{repo_source}`")
+        lines.append(f"**Execution Mode:** `{execution_mode}`")
         lines.append(f"**Figma File ID:** `{figma_file_id}`")
         lines.append("")
 
@@ -194,9 +200,7 @@ class ModernizationReportGenerator:
             lines.append("| Stage | Duration (s) |")
             lines.append("|---|---:|")
             for item in run_timeline:
-                lines.append(
-                    f"| {item.get('stage', '')} | {item.get('duration_s', 0)} |"
-                )
+                lines.append(f"| {item.get('stage', '')} | {item.get('duration_s', 0)} |")
             lines.append("")
 
         lines.append("## 11. Synchronization Results")

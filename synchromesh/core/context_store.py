@@ -1,7 +1,7 @@
 import json
 import os
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 class ContextStore:
     """
@@ -19,6 +19,9 @@ class ContextStore:
       - pipeline_status
       - run_timeline
       - report_path
+      - execution_mode
+      - repo_source
+      - repo_identifier
 
     Also writes traces for evaluation and dashboard use.
     """
@@ -31,7 +34,14 @@ class ContextStore:
         self.shared_memory: Dict[str, Any] = {}
         self.start_new_run()
 
-    def start_new_run(self, repo: str | None = None, figma_file_id: str | None = None):
+    def start_new_run(
+        self,
+        repo: Optional[str] = None,
+        figma_file_id: Optional[str] = None,
+        execution_mode: Optional[str] = None,
+        repo_source: Optional[str] = None,
+        repo_identifier: Optional[str] = None,
+    ):
         """
         Resets run-scoped memory for a fresh pipeline execution.
         Keeps session_start stable, refreshes run-specific metadata.
@@ -42,6 +52,9 @@ class ContextStore:
             "run_id": datetime.now().strftime("%Y%m%d_%H%M%S"),
             "repo": repo,
             "figma_file_id": figma_file_id,
+            "execution_mode": execution_mode,
+            "repo_source": repo_source,
+            "repo_identifier": repo_identifier or repo,
             "detected_drift": [],
             "outdated_components": [],
             "recommendations": [],
@@ -55,8 +68,34 @@ class ContextStore:
             "report_path": None,
         }
 
-    def set_run_context(self, repo: str, figma_file_id: str):
-        self.start_new_run(repo=repo, figma_file_id=figma_file_id)
+    def set_run_context(
+        self,
+        repo: str,
+        figma_file_id: str,
+        execution_mode: Optional[str] = None,
+        repo_source: Optional[str] = None,
+        repo_identifier: Optional[str] = None,
+    ):
+        self.start_new_run(
+            repo=repo,
+            figma_file_id=figma_file_id,
+            execution_mode=execution_mode,
+            repo_source=repo_source,
+            repo_identifier=repo_identifier,
+        )
+
+    def set_run_metadata(
+        self,
+        execution_mode: Optional[str] = None,
+        repo_source: Optional[str] = None,
+        repo_identifier: Optional[str] = None,
+    ):
+        if execution_mode is not None:
+            self.shared_memory["execution_mode"] = execution_mode
+        if repo_source is not None:
+            self.shared_memory["repo_source"] = repo_source
+        if repo_identifier is not None:
+            self.shared_memory["repo_identifier"] = repo_identifier
 
     def add_detected_drift(self, findings: List[dict]):
         self.shared_memory["detected_drift"].extend(findings)
@@ -114,8 +153,21 @@ class ContextStore:
           outputs/trace_logs.json
           outputs/pipeline_status.json
           outputs/run_timeline.json
+          outputs/run_metadata.json
         """
         os.makedirs(self.outputs_dir, exist_ok=True)
+
+        run_metadata = {
+            "run_id": self.shared_memory.get("run_id"),
+            "repo": self.shared_memory.get("repo"),
+            "figma_file_id": self.shared_memory.get("figma_file_id"),
+            "execution_mode": self.shared_memory.get("execution_mode"),
+            "repo_source": self.shared_memory.get("repo_source"),
+            "repo_identifier": self.shared_memory.get("repo_identifier"),
+            "session_start": self.shared_memory.get("session_start"),
+            "run_start": self.shared_memory.get("run_start"),
+            "report_path": self.shared_memory.get("report_path"),
+        }
 
         mapping = {
             "drift_report.json": self.shared_memory["detected_drift"],
@@ -128,6 +180,7 @@ class ContextStore:
             "trace_logs.json": self.shared_memory["trace_logs"],
             "pipeline_status.json": self.shared_memory["pipeline_status"],
             "run_timeline.json": self.shared_memory["run_timeline"],
+            "run_metadata.json": run_metadata,
         }
 
         out_paths: Dict[str, str] = {}
@@ -136,8 +189,5 @@ class ContextStore:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(payload, f, indent=2)
             out_paths[filename] = path
-
-        if self.shared_memory.get("report_path"):
-            out_paths["report_path"] = self.shared_memory["report_path"]
 
         return out_paths

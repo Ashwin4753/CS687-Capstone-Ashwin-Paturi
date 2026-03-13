@@ -1,6 +1,9 @@
 from __future__ import annotations
+
+import os
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
@@ -21,11 +24,11 @@ class SynchroMeshOrchestrator:
     Central workflow coordinator for SynchroMesh.
 
     Pipeline:
-      1) GitHub MCP lists files and reads code
+      1) Repo client lists files and reads code
       2) Archaeologist detects hard-coded drift
       3) Archaeologist computes dependency impact signals
       4) Archaeologist detects outdated frontend/backend modules
-      5) Figma MCP provides authoritative design tokens
+      5) Figma client provides authoritative design tokens
       6) Stylist maps findings to tokens and assigns risk
       7) ApprovalGate enforces governance policy
       8) Syncer applies approved LOW-risk substitutions and drafts PR info
@@ -72,7 +75,21 @@ class SynchroMeshOrchestrator:
         """
         Executes a full synchronization run.
         """
-        self.context.set_run_context(repo=repo_root, figma_file_id=figma_file_id)
+        execution_mode = (os.getenv("SYNCHROMESH_MODE") or "mock").strip().lower()
+        repo_source = self._infer_repo_source(execution_mode, github_mcp_client)
+        repo_identifier = self._infer_repo_identifier(
+            repo_root=repo_root,
+            repo_source=repo_source,
+            github_client=github_mcp_client,
+        )
+
+        self.context.set_run_context(
+            repo=repo_root,
+            figma_file_id=figma_file_id,
+            execution_mode=execution_mode,
+            repo_source=repo_source,
+            repo_identifier=repo_identifier,
+        )
 
         token_format = self.config.get("design_tokens", {}).get("format", "var(--{token})")
         pipeline_status: List[Dict[str, Any]] = []
@@ -254,6 +271,9 @@ class SynchroMeshOrchestrator:
             recommendations=governed_recommendations,
             patches_applied=0,
             outdated_components=outdated_components,
+            execution_mode=execution_mode,
+            repo_source=repo_source,
+            repo_identifier=repo_identifier,
         )
 
         # --- evaluation metrics ---
@@ -277,6 +297,9 @@ class SynchroMeshOrchestrator:
             "outdated_component_count": len(outdated_components),
             "pipeline_status": pipeline_status,
             "run_timeline": run_timeline,
+            "execution_mode": execution_mode,
+            "repo_source": repo_source,
+            "repo_identifier": repo_identifier,
         }
 
         if ground_truth:
@@ -342,12 +365,18 @@ class SynchroMeshOrchestrator:
             recommendations=governed_recommendations,
             patches_applied=patches_applied,
             outdated_components=outdated_components,
+            execution_mode=execution_mode,
+            repo_source=repo_source,
+            repo_identifier=repo_identifier,
         )
         self.context.set_metrics(runtime_metrics)
 
         evaluation["runtime_metrics"] = runtime_metrics
         evaluation["pipeline_status"] = pipeline_status
         evaluation["run_timeline"] = run_timeline
+        evaluation["execution_mode"] = execution_mode
+        evaluation["repo_source"] = repo_source
+        evaluation["repo_identifier"] = repo_identifier
         self.context.set_evaluation(evaluation)
 
         report_path = self.report_generator.generate_report(
@@ -502,6 +531,36 @@ class SynchroMeshOrchestrator:
         impact_rows.sort(key=lambda item: item["impact_score"], reverse=True)
         return impact_rows
 
+    def _infer_repo_source(self, execution_mode: str, github_client: Any) -> str:
+        if execution_mode == "real":
+            return "remote_mcp"
+        if execution_mode == "demo":
+            return "local_repo"
+        if execution_mode == "mock":
+            return "mock_repo"
+
+        client_name = github_client.__class__.__name__.lower()
+        if "local" in client_name:
+            return "local_repo"
+        if "mock" in client_name:
+            return "mock_repo"
+        return "remote_mcp"
+
+    def _infer_repo_identifier(self, repo_root: str, repo_source: str, github_client: Any) -> str:
+        if repo_source == "remote_mcp":
+            owner = getattr(github_client, "owner", None)
+            repo = getattr(github_client, "repo", None)
+            if owner and repo:
+                return f"{owner}/{repo}"
+
+        if repo_source == "local_repo":
+            try:
+                return str(Path(repo_root).resolve())
+            except Exception:
+                return repo_root
+
+        return repo_root
+
     async def _safe_list_files(self, github: Any, repo_root: str) -> List[str]:
         fn = getattr(github, "list_files", None)
         if callable(fn):
@@ -512,7 +571,7 @@ class SynchroMeshOrchestrator:
             return await fn(repo_root)
 
         raise AttributeError(
-            "GitHub MCP client must expose list_files(...) or get_file_tree(...)."
+            "Repo client must expose list_files(...) or get_file_tree(...)."
         )
 
     async def _safe_read_file(self, github: Any, path: str) -> str:
@@ -525,7 +584,7 @@ class SynchroMeshOrchestrator:
             return await fn(path)
 
         raise AttributeError(
-            "GitHub MCP client must expose read_file(...) or get_file_content(...)."
+            "Repo client must expose read_file(...) or get_file_content(...)."
         )
 
     async def _safe_get_figma_tokens(self, figma: Any, figma_file_id: str) -> Dict[str, Any]:
@@ -538,5 +597,5 @@ class SynchroMeshOrchestrator:
             return await fn(figma_file_id)
 
         raise AttributeError(
-            "Figma MCP client must expose get_tokens(...) or fetch_tokens(...)."
+            "Figma client must expose get_tokens(...) or fetch_tokens(...)."
         )

@@ -1,10 +1,13 @@
 import os
 import asyncio
+from pathlib import Path
+
 import streamlit as st
 
 from core.orchestrator import SynchroMeshOrchestrator
 from integration.github_mcp_client import GitHubMCPClient
 from integration.figma_mcp_client import FigmaMCPClient
+from integration.local_repo_client import LocalRepoClient
 from interaction.dashboard.visualizer import render_metrics
 from interaction.dashboard.reasoning_panel import render_agent_logs
 from interaction.dashboard.governance_ui import render_approval_queue
@@ -31,16 +34,17 @@ def _inject_theme():
             font-weight: 600;
         }
         .block-container {
-            padding-top: 1.8rem;
+            padding-top: 2.2rem;
             padding-bottom: 2rem;
             max-width: 1380px;
         }
         .syn-page-title {
-            font-size: 2.25rem;
+            font-size: 2.3rem;
             font-weight: 800;
             color: #18263f;
+            margin-top: 0.4rem;
             margin-bottom: 0.2rem;
-            line-height: 1.1;
+            line-height: 1.15;
         }
         .syn-page-subtitle {
             color: #6f7b8d;
@@ -220,11 +224,35 @@ class MockGitHubClient:
     async def write_file(self, path: str, content: str):
         return
 
-def _make_clients(mode: str, owner: str, repo: str):
+def _get_demo_repo_root_from_config(orchestrator: SynchroMeshOrchestrator) -> str:
+    return (
+        orchestrator.config.get("demo", {}).get("local_repo_base")
+        or orchestrator.config.get("runtime", {}).get("demo_repo_root")
+        or "./target_repo"
+    )
+
+def _discover_local_demo_repos(base_dir: str) -> list[str]:
+    root = Path(base_dir)
+    if not root.exists() or not root.is_dir():
+        return []
+
+    repos = []
+    for item in sorted(root.iterdir()):
+        if item.is_dir() and not item.name.startswith("."):
+            repos.append(str(item.as_posix()))
+    return repos
+
+def _make_clients(mode: str, owner: str, repo: str, repo_root: str):
     if mode == "real":
         github = GitHubMCPClient()
         github.set_repo(owner, repo)
         figma = FigmaMCPClient()
+        return github, figma
+
+    if mode == "demo":
+        github = LocalRepoClient(repo_root)
+        github.set_repo(owner, repo)
+        figma = MockFigmaClient()
         return github, figma
 
     github = MockGitHubClient()
@@ -305,15 +333,37 @@ def _render_sidebar(orchestrator: SynchroMeshOrchestrator, mode: str):
         .get("repo_root", "./target_repo")
     )
 
-    repo_root = st.sidebar.text_input("Repo Root", default_repo_root)
+    demo_repo_root = _get_demo_repo_root_from_config(orchestrator)
+    demo_repos = _discover_local_demo_repos(demo_repo_root)
+
+    if mode == "demo" and demo_repos:
+        repo_root = st.sidebar.selectbox(
+            "Select Demo Repository",
+            demo_repos,
+            index=0,
+        )
+    else:
+        repo_root = st.sidebar.text_input("Repo Root", default_repo_root)
+
     figma_file_id = st.sidebar.text_input("Figma File ID", "v0_design_system")
-    owner = st.sidebar.text_input("GitHub Owner", "owner")
-    repo = st.sidebar.text_input("GitHub Repo", "legacy-app")
+
+    if mode == "real":
+        owner = st.sidebar.text_input("GitHub Owner", "owner")
+        repo = st.sidebar.text_input("GitHub Repo", "legacy-app")
+    else:
+        owner = st.sidebar.text_input("GitHub Owner", "local")
+        repo = st.sidebar.text_input(
+            "GitHub Repo",
+            Path(repo_root).name if repo_root else "local-repo",
+        )
 
     st.sidebar.divider()
     st.sidebar.markdown("### System Status")
     st.sidebar.write(f"**Run ID:** `{orchestrator.context.shared_memory.get('run_id', '')}`")
     st.sidebar.write(f"**Selected approvals:** {len(st.session_state.get('approved_change_ids', set()))}")
+
+    if mode == "demo" and not demo_repos:
+        st.sidebar.warning(f"No local demo repositories found under `{demo_repo_root}`")
 
     return page, repo_root, figma_file_id, owner, repo
 
@@ -347,11 +397,22 @@ def _show_run_result_status(result: dict):
     else:
         st.info(f"Pipeline finished with status: {result.get('status')}")
 
-def _render_run_controls(orchestrator, github_client, figma_client, repo_root, figma_file_id):
+def _run_pipeline(orchestrator, github_client, figma_client, repo_root, figma_file_id, approved_changes=None):
+    return _run_async(
+        orchestrator.run_sync_pipeline(
+            repo_root=repo_root,
+            figma_file_id=figma_file_id,
+            github_mcp_client=github_client,
+            figma_mcp_client=figma_client,
+            approved_changes=approved_changes,
+        )
+    )
+
+def _render_run_controls(orchestrator, github_client, figma_client, repo_root, figma_file_id, mode: str):
     st.markdown('<div class="syn-card">', unsafe_allow_html=True)
     st.markdown('<div class="syn-card-title">Run Controls</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="syn-card-subtitle">Launch a new analysis run, one-click demo scenario, or re-run with the currently selected approvals.</div>',
+        '<div class="syn-card-subtitle">Launch a new analysis run, a demo pipeline run, or re-run with the currently selected approvals.</div>',
         unsafe_allow_html=True,
     )
 
@@ -362,36 +423,40 @@ def _render_run_controls(orchestrator, github_client, figma_client, repo_root, f
             st.session_state["approved_change_ids"] = set()
 
             with st.spinner("Agents are analyzing drift via MCP + reasoning layer..."):
-                result = _run_async(
-                    orchestrator.run_sync_pipeline(
-                        repo_root=repo_root,
-                        figma_file_id=figma_file_id,
-                        github_mcp_client=github_client,
-                        figma_mcp_client=figma_client,
+                try:
+                    result = _run_pipeline(
+                        orchestrator,
+                        github_client,
+                        figma_client,
+                        repo_root,
+                        figma_file_id,
                         approved_changes=None,
                     )
-                )
-                st.session_state["last_result"] = result
-
-            _show_run_result_status(result)
+                    st.session_state["last_result"] = result
+                    _show_run_result_status(result)
+                except Exception as e:
+                    st.error(f"Pipeline failed: {e}")
+                    if mode == "real":
+                        st.info("REAL mode depends on MCP server compatibility. For live reliability, use DEMO or MOCK mode.")
 
     with action_col2:
-        if st.button("🎬 Run Demo Scenario", use_container_width=True):
+        if st.button("🎬 Run Demo Pipeline", use_container_width=True):
             st.session_state["approved_change_ids"] = set()
 
-            with st.spinner("Running curated demo scenario..."):
-                result = _run_async(
-                    orchestrator.run_sync_pipeline(
-                        repo_root=repo_root,
-                        figma_file_id=figma_file_id,
-                        github_mcp_client=github_client,
-                        figma_mcp_client=figma_client,
+            with st.spinner("Running demo pipeline..."):
+                try:
+                    result = _run_pipeline(
+                        orchestrator,
+                        github_client,
+                        figma_client,
+                        repo_root,
+                        figma_file_id,
                         approved_changes=None,
                     )
-                )
-                st.session_state["last_result"] = result
-
-            _show_run_result_status(result)
+                    st.session_state["last_result"] = result
+                    _show_run_result_status(result)
+                except Exception as e:
+                    st.error(f"Demo pipeline failed: {e}")
 
     with action_col3:
         if st.button("✅ Apply Approved Changes (Re-run)", use_container_width=True):
@@ -401,18 +466,19 @@ def _render_run_controls(orchestrator, github_client, figma_client, repo_root, f
             approved_changes = _build_approved_changes(approved_ids, recs)
 
             with st.spinner("Re-running pipeline with approvals..."):
-                result = _run_async(
-                    orchestrator.run_sync_pipeline(
-                        repo_root=repo_root,
-                        figma_file_id=figma_file_id,
-                        github_mcp_client=github_client,
-                        figma_mcp_client=figma_client,
+                try:
+                    result = _run_pipeline(
+                        orchestrator,
+                        github_client,
+                        figma_client,
+                        repo_root,
+                        figma_file_id,
                         approved_changes=approved_changes,
                     )
-                )
-                st.session_state["last_result"] = result
-
-            _show_run_result_status(result)
+                    st.session_state["last_result"] = result
+                    _show_run_result_status(result)
+                except Exception as e:
+                    st.error(f"Re-run failed: {e}")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -687,7 +753,7 @@ def _render_documentation_page(last_result: dict, context_store):
 ├── Stylist Agent
 ├── Syncer Agent
 ├── Governance Layer
-├── MCP Integration (Figma / GitHub)
+├── MCP Integration / Local Repo Client
 └── Evaluation + Reporting""",
             language="text",
         )
@@ -737,16 +803,16 @@ def main():
     _render_page_header(orchestrator, mode, owner, repo)
 
     try:
-        github_client, figma_client = _make_clients(mode, owner, repo)
+        github_client, figma_client = _make_clients(mode, owner, repo, repo_root)
     except Exception as e:
         st.error(f"Failed to initialize clients in {mode.upper()} mode: {e}")
-        st.info("Switch to mock mode or check environment variables / MCP setup.")
+        st.info("Switch to MOCK mode, use DEMO mode with a local repo, or check MCP/environment setup.")
         return
 
     last_result = st.session_state.get("last_result", {})
 
     if page == "Dashboard":
-        _render_run_controls(orchestrator, github_client, figma_client, repo_root, figma_file_id)
+        _render_run_controls(orchestrator, github_client, figma_client, repo_root, figma_file_id, mode)
         render_metrics(orchestrator.context)
 
     elif page == "Detected Drift":

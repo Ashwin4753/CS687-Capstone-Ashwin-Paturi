@@ -56,10 +56,6 @@ class GitHubMCPClient:
                 return await self._list_tool_names(session)
 
     async def health_check(self) -> bool:
-        """
-        Best-effort MCP connectivity check.
-        Returns True if tools can be listed successfully.
-        """
         try:
             tools = await self.list_available_tools()
             return len(tools) > 0
@@ -76,61 +72,68 @@ class GitHubMCPClient:
         """
         owner, repo = self._require_repo()
 
-        async with stdio_client(self.server_params) as (read, write):
-            async with ClientSession(read, write) as session:
-                await asyncio.wait_for(session.initialize(), timeout=self.timeout_seconds)
-                tool_names = await self._list_tool_names(session)
+        try:
+            async with stdio_client(self.server_params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await asyncio.wait_for(session.initialize(), timeout=self.timeout_seconds)
+                    tool_names = await self._list_tool_names(session)
 
-                tree_candidates = [
-                    "get_repo_tree",
-                    "get_repository_tree",
-                    "list_repo_files",
-                    "list_files",
-                ]
-                tree_tool = self._pick_tool(tool_names, tree_candidates)
-
-                if tree_tool:
-                    payload_candidates = [
-                        {"owner": owner, "repo": repo, "path": repo_root}
-                        if repo_root else
-                        {"owner": owner, "repo": repo},
-                        {"owner": owner, "repo": repo, "directory": repo_root}
-                        if repo_root else
-                        {"owner": owner, "repo": repo},
-                        {"owner": owner, "repo": repo, "root": repo_root}
-                        if repo_root else
-                        {"owner": owner, "repo": repo},
-                        {"owner": owner, "repo": repo},
+                    tree_candidates = [
+                        "get_repo_tree",
+                        "get_repository_tree",
+                        "list_repo_files",
+                        "list_files",
                     ]
+                    tree_tool = self._pick_tool(tool_names, tree_candidates)
 
-                    for payload in payload_candidates:
+                    if tree_tool:
+                        payload_candidates = [
+                            {"owner": owner, "repo": repo, "path": repo_root} if repo_root else {"owner": owner, "repo": repo},
+                            {"owner": owner, "repo": repo, "directory": repo_root} if repo_root else {"owner": owner, "repo": repo},
+                            {"owner": owner, "repo": repo, "root": repo_root} if repo_root else {"owner": owner, "repo": repo},
+                            {"owner": owner, "repo": repo},
+                        ]
+
+                        for payload in payload_candidates:
+                            try:
+                                result = await asyncio.wait_for(
+                                    session.call_tool(tree_tool, payload),
+                                    timeout=self.timeout_seconds,
+                                )
+                                files = self._extract_file_list(result)
+                                if files:
+                                    return self._filter_repo_root(files, repo_root)
+                            except Exception:
+                                continue
+
+                    search_tool = self._pick_tool(tool_names, ["search_code"])
+                    if search_tool:
                         try:
-                            result = await asyncio.wait_for(
-                                session.call_tool(tree_tool, payload),
-                                timeout=self.timeout_seconds,
+                            files = await self._search_code_file_list(
+                                session=session,
+                                search_tool=search_tool,
+                                owner=owner,
+                                repo=repo,
+                                repo_root=repo_root,
                             )
-                            files = self._extract_file_list(result)
                             if files:
-                                return self._filter_repo_root(files, repo_root)
-                        except Exception:
-                            continue
+                                return files
+                        except Exception as e:
+                            raise RuntimeError(
+                                f"GitHub MCP connected, but file discovery failed for repo "
+                                f"{owner}/{repo}. Tree tools unavailable and search_code fallback failed."
+                            ) from e
 
-                search_tool = self._pick_tool(tool_names, ["search_code"])
-                if search_tool:
-                    files = await self._search_code_file_list(
-                        session=session,
-                        search_tool=search_tool,
-                        owner=owner,
-                        repo=repo,
-                        repo_root=repo_root,
+                    raise RuntimeError(
+                        "Unable to discover repository files. "
+                        f"Available tools: {tool_names}"
                     )
-                    if files:
-                        return files
-
-                raise RuntimeError(
-                    "Unable to discover repository files. "
-                    f"Available tools: {tool_names}"
-                )
+        except Exception as e:
+            raise RuntimeError(
+                f"GitHub MCP list_files failed for repo {owner}/{repo}. "
+                f"Repo root='{repo_root}'. Check MCP server compatibility, token scope, "
+                f"and repo discovery support."
+            ) from e
 
     async def read_file(self, path: str) -> str:
         owner, repo = self._require_repo()
@@ -178,12 +181,6 @@ class GitHubMCPClient:
                 return ""
 
     async def write_file(self, path: str, content: str) -> None:
-        """
-        Optional best-effort write support.
-
-        Not all GitHub MCP servers expose file-write/update tools.
-        If unsupported, this method raises no error and simply returns.
-        """
         owner, repo = self._require_repo()
 
         async with stdio_client(self.server_params) as (read, write):
@@ -256,11 +253,6 @@ class GitHubMCPClient:
         repo: str,
         repo_root: str = "",
     ) -> List[str]:
-        """
-        Fallback file discovery using GitHub code search.
-
-        This is useful when the MCP server does not expose a repo tree tool.
-        """
         normalized_root = self._normalize_repo_root(repo_root)
         files: Set[str] = set()
         last_error = None
@@ -279,8 +271,6 @@ class GitHubMCPClient:
                     {"search_query": query},
                 ]
 
-                success_for_query = False
-
                 for payload in payload_candidates:
                     try:
                         result = await asyncio.wait_for(
@@ -292,22 +282,17 @@ class GitHubMCPClient:
                         for path in discovered:
                             normalized_path = path.replace("\\", "/").lstrip("./")
                             if normalized_root:
-                                if (
-                                    normalized_path == normalized_root
-                                    or normalized_path.startswith(normalized_root + "/")
-                                ):
+                                if normalized_path == normalized_root or normalized_path.startswith(normalized_root + "/"):
                                     files.add(normalized_path)
                             else:
                                 files.add(normalized_path)
 
-                        success_for_query = True
-                        break
+                        if discovered:
+                            break
+
                     except Exception as e:
                         last_error = e
                         continue
-
-                if success_for_query:
-                    continue
 
         if files:
             return sorted(files)
@@ -341,9 +326,6 @@ class GitHubMCPClient:
 
     @staticmethod
     def _extract_text_content(result: Any) -> str:
-        """
-        Safely extracts textual content from MCP result.
-        """
         if result is None:
             return ""
 
@@ -364,13 +346,6 @@ class GitHubMCPClient:
 
     @staticmethod
     def _extract_file_list(result: Any) -> List[str]:
-        """
-        Best-effort extraction of repository file paths.
-        Supports:
-          - JSON text list
-          - JSON dict with 'files', 'tree', or 'items'
-          - list of dict nodes with 'path'
-        """
         raw_text = GitHubMCPClient._extract_text_content(result)
         if not raw_text:
             return []
@@ -417,10 +392,6 @@ class GitHubMCPClient:
 
     @staticmethod
     def _extract_search_code_paths(result: Any) -> List[str]:
-        """
-        Best-effort extraction of file paths from search_code tool output.
-        Supports several likely shapes.
-        """
         raw_text = GitHubMCPClient._extract_text_content(result)
         if not raw_text:
             return []
