@@ -16,13 +16,13 @@ class SynchroMeshOrchestrator:
         
         # 1. Digital Archaeology Phase
         # In a real app, you'd fetch file content via GitHub MCP here
-        sample_code = "const primaryBtn = { color: '#3b82f6', margin: '10px' };"
+        sample_code = "const primaryBtn = { color: 'var(--color.primary.500)', margin: '10px' };"
         ghost_styles = self.archaeologist.find_ghost_styles(sample_code)
         self.context.update_shared_memory("detected_drift", ghost_styles)
 
         # 2. Design Alignment Phase
         # Fetching Figma tokens via Figma MCP
-        mock_figma_tokens = {"#3b82f6": "var(--blue-500)"} 
+        mock_figma_tokens = {"var(--color.primary.500)": "var(--blue-500)"} 
         recommendations = self.stylist.detect_drift(ghost_styles, mock_figma_tokens)
         self.context.update_shared_memory("recommendations", recommendations)
 

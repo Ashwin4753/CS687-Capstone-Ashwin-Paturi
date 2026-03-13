@@ -397,10 +397,20 @@ def _show_run_result_status(result: dict):
     else:
         st.info(f"Pipeline finished with status: {result.get('status')}")
 
-def _run_pipeline(orchestrator, github_client, figma_client, repo_root, figma_file_id, approved_changes=None):
+def _run_pipeline(
+    orchestrator,
+    github_client,
+    figma_client,
+    repo_root,
+    figma_file_id,
+    approved_changes=None,
+    mode: str = "mock",
+):
+    effective_repo_root = "." if mode == "demo" else repo_root
+
     return _run_async(
         orchestrator.run_sync_pipeline(
-            repo_root=repo_root,
+            repo_root=effective_repo_root,
             figma_file_id=figma_file_id,
             github_mcp_client=github_client,
             figma_mcp_client=figma_client,
@@ -431,6 +441,7 @@ def _render_run_controls(orchestrator, github_client, figma_client, repo_root, f
                         repo_root,
                         figma_file_id,
                         approved_changes=None,
+                        mode=mode,
                     )
                     st.session_state["last_result"] = result
                     _show_run_result_status(result)
@@ -452,7 +463,8 @@ def _render_run_controls(orchestrator, github_client, figma_client, repo_root, f
                         repo_root,
                         figma_file_id,
                         approved_changes=None,
-                    )
+                        mode=mode,
+                        )
                     st.session_state["last_result"] = result
                     _show_run_result_status(result)
                 except Exception as e:
@@ -474,6 +486,7 @@ def _render_run_controls(orchestrator, github_client, figma_client, repo_root, f
                         repo_root,
                         figma_file_id,
                         approved_changes=approved_changes,
+                        mode=mode,
                     )
                     st.session_state["last_result"] = result
                     _show_run_result_status(result)

@@ -30,4 +30,4 @@ class FigmaMCPClient:
     def normalize_tokens(self, raw_data: str):
         """Converts raw MCP output into a {hex: token_name} mapping."""
         # Logic to parse Figma JSON into a flat map for the agents
-        return {"#3b82f6": "var(--primary-blue)", "#ffffff": "var(--white)"}
+        return {"var(--color.primary.500)": "var(--primary-blue)", "var(--color.white)": "var(--white)"}
