@@ -5,7 +5,7 @@ export default function Home() {
   return (
     <div style={{ background: '#f1f5f9', minHeight: '100vh', padding: '24px' }}>
       <Navbar />
-      <div style={{ marginTop: '16px' }}>
+      <div style={{ marginTop: 'var(--spacing.4)' }}>
         <StatTile />
       </div>
     </div>

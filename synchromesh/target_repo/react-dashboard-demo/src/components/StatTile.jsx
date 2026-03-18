@@ -1,8 +1,8 @@
 const tileStyle = {
-  background: '#ffffff',
-  borderRadius: '8px',
-  padding: '16px',
-  margin: '12px',
+  background: 'var(--color.white)',
+  borderRadius: 'var(--spacing.2)',
+  padding: 'var(--spacing.4)',
+  margin: 'var(--spacing.3)',
   border: '1px solid #e2e8f0',
 }
 
